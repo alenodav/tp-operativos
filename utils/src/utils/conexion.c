@@ -1,6 +1,6 @@
 #include "conexion.h"
+extern t_log *logger;
 
-t_log *logger;
 
 uint32_t crear_socket_cliente(char *ip, char* port) {
     uint32_t err;
