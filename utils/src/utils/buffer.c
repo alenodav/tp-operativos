@@ -14,12 +14,12 @@ void buffer_destroy(t_buffer *buffer) {
 }
 
 void buffer_add(t_buffer *buffer, void *data, uint32_t size) {
-    memcpy(buffer->stream + buffer->offset, &data, size);
+    memcpy(buffer->stream + buffer->offset, data, size);
     buffer->offset += size;
 }
 
 void buffer_read(t_buffer *buffer, void *data, uint32_t size) {
-    memcpy(&(data), buffer->stream + buffer->offset, size);
+    memcpy(data, buffer->stream + buffer->offset, size);
     buffer->offset += size;
 }
 
