@@ -4,3 +4,7 @@
 #include <commons/log.h>
 #include <commons/config.h>
 #include <pthread.h>
+#include <utils/config.h>
+#include <utils/log.h>
+
+void escucha_io(t_config* config);

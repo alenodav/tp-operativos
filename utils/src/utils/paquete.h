@@ -12,6 +12,10 @@
 #include "buffer.h"
 #include "conexion.h"
 
+typedef enum {
+    HANDSHAKE
+} t_operacion;
+
 typedef struct {
     uint8_t codigo_operacion;
     t_buffer* buffer;
