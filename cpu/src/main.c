@@ -1,35 +1,31 @@
 #include <main.h>
 
 t_log* logger;
-t_config* config;
 
 int main(int argc, char* argv[]) {
-    saludar("cpu");
-
     /* --- config --- */
-
-    config = iniciar_config();
-    if(config==NULL)
-    {
-        printf("No se pudo crear el config\n");
-        abort();
-    }
-    char* ip = config_get_string_value(config,"IP_MEMORIA");
-    char* puerto = config_get_string_value(config,"PUERTO_MEMORIA");
-    char* log_level = config_get_string_value(config,"LOG_LEVEL");
+    t_config *config = crear_config("cpu");
 
     /* --- logging --- */
-
-    logger = iniciar_logger();
+    logger = crear_log(config, "cpu");
+    log_debug(logger, "Config y Logger de cpu creados correctamente.");
 
     /* --- Conexion (cliente) --- */
-    uint32_t socket_cliente = crear_socket_cliente(ip,puerto);
+    uint32_t fd_cpu_cliente = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+
+    // buffer
+    t_buffer *mensaje = buffer_create(sizeof(int));
+    buffer_add_uint32(mensaje,1);
+
+    // paquete
+    t_paquete *handshake_cpu = crear_paquete(HANDSHAKE,mensaje);
+    enviar_paquete(handshake_cpu,fd_cpu_cliente);
 
     /* --- Liberar --- */
 
     log_destroy(logger);
     config_destroy(config);
-    liberar_conexion(socket_cliente);
+    liberar_conexion(fd_cpu_cliente);
 
     return 0;
 }
