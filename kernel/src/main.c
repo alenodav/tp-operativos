@@ -39,6 +39,7 @@ void escucha_io(t_config* config){
     return;
 }
 
+
 void handshake_memoria(t_config *config) {
     uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
 
