@@ -16,8 +16,6 @@ int main(int argc, char* argv[]) {
     log_info(logger, "Finalizo el proceso.");
     log_destroy(logger);
 
-    return 0;
-}
 
 void handshake_kernel(t_config* config) {
     uint32_t fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
