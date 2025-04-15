@@ -33,3 +33,8 @@ t_paquete *recibir_paquete(uint32_t socket);
 //Libera la memoria asociada a un paquete
 void destruir_paquete(t_paquete *paquete);
 
+void recibir_handshake(uint32_t fd_conexion);
+
+void enviar_handshake(uint32_t fd_conexion);
+
+

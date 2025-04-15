@@ -11,13 +11,11 @@ int main(int argc, char* argv[]) {
 
     uint32_t fd_kernel = crear_socket_cliente(config_get_string_value(config, "IP"), config_get_string_value(config, "PUERTO_KERNEL"));
 
-    t_buffer *mensaje = buffer_create(sizeof(int));
-    buffer_add_uint32(mensaje, 1);
+    enviar_handshake(fd_kernel);
+    recibir_handshake(fd_kernel);
+    log_info(logger, "Handshake Kernel a IO OK.");
 
-    t_paquete *handshake = crear_paquete(HANDSHAKE, mensaje);
-
-    enviar_paquete(handshake, fd_kernel);
-    log_debug(logger, "Handshake enviado a Kernel con exito.");
+    liberar_conexion(fd_kernel);
 
     return 0;
 }

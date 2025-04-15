@@ -56,3 +56,34 @@ t_paquete *recibir_paquete(uint32_t socket) {
 
     return paquete;
 }
+
+void recibir_handshake(uint32_t fd_conexion) {
+    t_paquete *handshake = recibir_paquete(fd_conexion);
+    if (handshake->codigo_operacion != HANDSHAKE) {
+        log_error(logger, "Codigo operación incorrecto para Handshake.");
+        abort();
+    }
+
+    uint32_t numero_recibido = buffer_read_uint32(handshake->buffer);
+
+    if (numero_recibido != 1) {
+        log_error(logger, "Handshake recibido es distinto de 1.");
+        abort();
+    }
+
+    destruir_paquete(handshake);
+
+    return;
+}
+
+void enviar_handshake(uint32_t fd_conexion) {
+    t_buffer *inicio = buffer_create(sizeof(uint32_t));
+
+    buffer_add_uint32(inicio, 1);
+
+    t_paquete *handshake_retorno = crear_paquete(HANDSHAKE, inicio);
+
+    enviar_paquete(handshake_retorno, fd_conexion);
+
+    return;
+}

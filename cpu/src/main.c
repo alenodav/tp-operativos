@@ -35,63 +35,18 @@ int main(int argc, char* argv[]) {
 void handshake_memoria(t_config* config){
     uint32_t fd_cpu_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
 
-    // buffer
-    t_buffer *mensaje = buffer_create(sizeof(int));
-    buffer_add_uint32(mensaje,1);
+    enviar_handshake(fd_cpu_memoria);
+    recibir_handshake(fd_cpu_memoria);
 
-    // paquete
-    t_paquete *handshake_cpu_memoria = crear_paquete(HANDSHAKE,mensaje);
-    enviar_paquete(handshake_cpu_memoria,fd_cpu_memoria);
-
-    t_paquete *retorno_handshake = recibir_paquete(fd_cpu_memoria);
-
-    uint8_t cod_op = retorno_handshake->codigo_operacion;
-
-    if(cod_op != HANDSHAKE) {
-        log_error(logger, "Codigo operación incorrecto para Handshake.");
-        abort();
-    }
-
-    uint32_t retorno = buffer_read_uint32(retorno_handshake->buffer);
-
-    if (retorno != 1) {
-        log_error(logger, "Retorno handshake es distinto de 1.");
-        abort();
-    }
-
-    log_info(logger, "Handshake memoria a cpu OK.");
-    destruir_paquete(retorno_handshake);
+    log_info(logger, "Handshake Memoria a CPU OK.");
     liberar_conexion(fd_cpu_memoria);
 }
 
 void handshake_kernel(t_config* config){
     uint32_t fd_cpu_kernel = crear_socket_cliente(config_get_string_value(config, "IP_KERNEL"), config_get_string_value(config, "PUERTO_KERNEL_DISPATCH"));
 
-    // buffer
-    t_buffer *mensaje = buffer_create(sizeof(int));
-    buffer_add_uint32(mensaje,1);
-
-    // paquete
-    t_paquete *handshake_cpu_kernel = crear_paquete(HANDSHAKE,mensaje);
-    enviar_paquete(handshake_cpu_kernel,fd_cpu_kernel);
-
-    /* t_paquete *retorno_handshake = recibir_paquete(fd_cpu_kernel);
-
-    uint8_t cod_op = retorno_handshake->codigo_operacion;
-
-    if(cod_op != HANDSHAKE) {
-        log_error(logger, "Codigo operación incorrecto para Handshake.");
-        abort();
-    }
-
-    uint32_t retorno = buffer_read_uint32(retorno_handshake->buffer);
-
-    if (retorno != 1) {
-        log_error(logger, "Retorno handshake es distinto de 1.");
-        abort();
-    }
-
-    log_info(logger, "Handshake kernel a cpu OK.");
-    destruir_paquete(retorno_handshake); */
+    enviar_handshake(fd_cpu_kernel);
+    recibir_handshake(fd_cpu_kernel);
+    log_info(logger, "Handshake Kernel a CPU OK.");
     liberar_conexion(fd_cpu_kernel);
 }
