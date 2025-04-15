@@ -5,4 +5,5 @@
 #include <utils/paquete.h>
 #include <pthread.h>
 
-void handshake_kernel(t_config*);
+void handshake_kernel(uint32_t);
+void handshake_cpu(uint32_t);
