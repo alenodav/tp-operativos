@@ -7,14 +7,21 @@ int main(int argc, char* argv[]) {
     log_debug(logger, "Config y Logger creados correctamente.");
 
     //uint32_t fd_escucha_dispatch = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));
-    
+
     pthread_t thread_io;
     pthread_create(&thread_io, NULL, escucha_io, config); // Se crea un thread que corra escucha_io(config)
-    pthread_detach(thread_io); // Se separa la ejecución del thread de la del programa principal
+    pthread_detach(thread_io);  // Se separa la ejecución del thread de la del programa principal
 
     pthread_t thread_memoria;
     pthread_create(&thread_memoria, NULL, handshake_memoria, config);
-    pthread_detach(thread_memoria);
+    pthread_detach(thread_memoria); 
+
+    //sleep(1);
+
+    //Creo un hilo para que corra escucha_cpu(config)
+    pthread_t thread_cpu;
+    pthread_create(&thread_cpu, NULL, escucha_cpu, config);
+    pthread_detach(thread_cpu);
 
     getchar(); // Para que el progrma no termine antes que los threads
 
@@ -34,6 +41,21 @@ void escucha_io(t_config* config){
         liberar_conexion(socket_io);
     } else {
         log_debug(logger, "Handshake de IO no recibido.");
+    }
+
+    return;
+}
+
+//Creo escucha cpu
+void escucha_cpu(t_config* config){
+    uint32_t fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));    
+    uint32_t socket_cpu = esperar_cliente(fd_escucha_cpu);
+    t_paquete *handshake = recibir_paquete(socket_cpu);
+    if (handshake->codigo_operacion == HANDSHAKE){
+        log_debug(logger, "Handshake de CPU recibido.");
+        liberar_conexion(socket_cpu);
+    } else {
+        log_debug(logger, "Handshake de CPU no recibido.");
     }
 
     return;

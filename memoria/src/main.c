@@ -8,13 +8,15 @@ int main(int argc, char* argv[]) {
 
     uint32_t fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
 
+    pthread_t thread_escucha_cpu;
+    pthread_create(&thread_escucha_cpu, NULL, handshake_cpu, fd_escucha_memoria);
+    pthread_detach(thread_escucha_cpu);
+   
     pthread_t thread_escucha_kernel;
     pthread_create(&thread_escucha_kernel, NULL, handshake_kernel, fd_escucha_memoria);
     pthread_detach(thread_escucha_kernel);
 
-    pthread_t thread_escucha_cpu;
-    pthread_create(&thread_escucha_cpu, NULL, handshake_cpu, fd_escucha_memoria);
-    pthread_detach(thread_escucha_cpu);
+   
 
     getchar();
 

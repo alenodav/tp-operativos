@@ -14,13 +14,16 @@ int main(int argc, char* argv[]) {
 
     pthread_t thread_memoria;
     pthread_create(&thread_memoria, NULL, handshake_memoria, config);
+    pthread_detach(thread_memoria); 
 
     // conexion (cliente a kernel)
     pthread_t thread_kernel;
     pthread_create(&thread_kernel, NULL, handshake_kernel, config);
-
-    pthread_detach(thread_memoria);
     pthread_detach(thread_kernel);
+
+    getchar();
+
+    //log_debug(logger, "finalizo el proceso");
 
 
     // liberar
@@ -62,7 +65,7 @@ void handshake_memoria(t_config* config){
 }
 
 void handshake_kernel(t_config* config){
-    uint32_t fd_cpu_kernel = crear_socket_cliente(config_get_string_value(config, "IP_KERNEL"), config_get_string_value(config, "PUERTO_KERNEL"));
+    uint32_t fd_cpu_kernel = crear_socket_cliente(config_get_string_value(config, "IP_KERNEL"), config_get_string_value(config, "PUERTO_KERNEL_DISPATCH"));
 
     // buffer
     t_buffer *mensaje = buffer_create(sizeof(int));
@@ -72,7 +75,7 @@ void handshake_kernel(t_config* config){
     t_paquete *handshake_cpu_kernel = crear_paquete(HANDSHAKE,mensaje);
     enviar_paquete(handshake_cpu_kernel,fd_cpu_kernel);
 
-    t_paquete *retorno_handshake = recibir_paquete(fd_cpu_kernel);
+    /* t_paquete *retorno_handshake = recibir_paquete(fd_cpu_kernel);
 
     uint8_t cod_op = retorno_handshake->codigo_operacion;
 
@@ -89,6 +92,6 @@ void handshake_kernel(t_config* config){
     }
 
     log_info(logger, "Handshake kernel a cpu OK.");
-    destruir_paquete(retorno_handshake);
+    destruir_paquete(retorno_handshake); */
     liberar_conexion(fd_cpu_kernel);
 }
