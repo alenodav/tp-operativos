@@ -44,11 +44,11 @@ uint8_t buffer_read_uint8(t_buffer *buffer) {
 }
 
 void buffer_add_string(t_buffer *buffer, uint32_t length, char *string) {
-    buffer_add(buffer, &string, length);
+    buffer_add(buffer, string, length);
 }
 
 char *buffer_read_string(t_buffer *buffer, uint32_t *length) {
-    char *res = malloc(*length + 1);
-    buffer_read(buffer, &res, *length);
+    char *res = malloc(*length);
+    buffer_read(buffer, res, *length);
     return res;
 }

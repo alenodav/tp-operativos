@@ -35,18 +35,33 @@ int main(int argc, char* argv[]) {
 void handshake_memoria(t_config* config){
     uint32_t fd_cpu_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
 
-    enviar_handshake(fd_cpu_memoria);
-    recibir_handshake(fd_cpu_memoria);
+    enviar_handshake(fd_cpu_memoria, "CPU");
+    char* identificador = recibir_handshake(fd_cpu_memoria);
 
-    log_info(logger, "Handshake Memoria a CPU OK.");
+    if (string_equals_ignore_case(identificador, "memoria")) {
+        log_debug(logger, "Handshake Memoria a CPU OK.");
+    }
+    else {
+        log_error(logger, "Handshake Memoria a CPU error.");
+    }
+
+    free(identificador);
     liberar_conexion(fd_cpu_memoria);
 }
 
 void handshake_kernel(t_config* config){
     uint32_t fd_cpu_kernel = crear_socket_cliente(config_get_string_value(config, "IP_KERNEL"), config_get_string_value(config, "PUERTO_KERNEL_DISPATCH"));
 
-    enviar_handshake(fd_cpu_kernel);
-    recibir_handshake(fd_cpu_kernel);
-    log_info(logger, "Handshake Kernel a CPU OK.");
+    enviar_handshake(fd_cpu_kernel, "CPU");
+    char* identificador = recibir_handshake(fd_cpu_kernel);
+
+    if (string_equals_ignore_case(identificador, "kernel")) {
+        log_debug(logger, "Handshake Kernel a CPU OK.");
+    }
+    else {
+        log_error(logger, "Handshake Kernel a CPU error.");
+    }
+
+    free(identificador);
     liberar_conexion(fd_cpu_kernel);
 }

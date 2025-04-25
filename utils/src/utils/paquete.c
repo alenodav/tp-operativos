@@ -57,33 +57,42 @@ t_paquete *recibir_paquete(uint32_t socket) {
     return paquete;
 }
 
-void recibir_handshake(uint32_t fd_conexion) {
+char* recibir_handshake(uint32_t fd_conexion) {
     t_paquete *handshake = recibir_paquete(fd_conexion);
     if (handshake->codigo_operacion != HANDSHAKE) {
         log_error(logger, "Codigo operación incorrecto para Handshake.");
-        abort();
+        //abort();
     }
 
-    uint32_t numero_recibido = buffer_read_uint32(handshake->buffer);
+    uint32_t length = buffer_read_uint32(handshake->buffer);
+    char* identificador = buffer_read_string(handshake->buffer, &length);
 
-    if (numero_recibido != 1) {
-        log_error(logger, "Handshake recibido es distinto de 1.");
-        abort();
-    }
+    // if (numero_recibido != 1) {
+    //     log_error(logger, "Handshake recibido es distinto de 1.");
+    //     abort();
+    // }
 
     destruir_paquete(handshake);
 
-    return;
+    return identificador;
 }
 
-void enviar_handshake(uint32_t fd_conexion) {
-    t_buffer *inicio = buffer_create(sizeof(uint32_t));
+void enviar_handshake(uint32_t fd_conexion, char* p_identificador) {
+    t_handshake* handshake = malloc(sizeof(t_handshake));
+    handshake->identificador = p_identificador;
+    handshake->id_length = string_length(p_identificador) + 1;
 
-    buffer_add_uint32(inicio, 1);
+    t_buffer *inicio = buffer_create(sizeof(uint32_t) + handshake->id_length);
+
+    buffer_add_uint32(inicio, handshake->id_length);
+
+    buffer_add_string(inicio, handshake->id_length, handshake->identificador);
 
     t_paquete *handshake_retorno = crear_paquete(HANDSHAKE, inicio);
 
     enviar_paquete(handshake_retorno, fd_conexion);
+
+    free(handshake);
 
     return;
 }

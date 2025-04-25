@@ -35,9 +35,15 @@ int main(int argc, char* argv[]) {
 void escucha_io(t_config* config){
     uint32_t fd_escucha_io = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_IO"));    
     uint32_t socket_io = esperar_cliente(fd_escucha_io);
-    recibir_handshake(socket_io);
-    log_info(logger, "Handshake IO a Kernel OK.");
-    enviar_handshake(socket_io);
+    char *identificador = recibir_handshake(socket_io);
+    if (string_equals_ignore_case(identificador, "io")) {
+        log_debug(logger, "Handshake IO a Kernel OK.");
+    }
+    else {
+        log_error(logger, "Handshake IO a Kernel error.");
+    }
+    free(identificador);
+    enviar_handshake(socket_io, "KERNEL");
     liberar_conexion(socket_io);
     liberar_conexion(fd_escucha_io);
     return;
@@ -47,9 +53,15 @@ void escucha_io(t_config* config){
 void escucha_cpu(t_config* config){
     uint32_t fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));    
     uint32_t socket_cpu = esperar_cliente(fd_escucha_cpu);
-    recibir_handshake(socket_cpu);
-    log_info(logger, "Handshake CPU a Kernel OK.");
-    enviar_handshake(socket_cpu);
+    char *identificador = recibir_handshake(socket_cpu);
+    if (string_equals_ignore_case(identificador, "cpu")) {
+        log_debug(logger, "Handshake CPU a Kernel OK.");
+    }
+    else {
+        log_error(logger, "Handshake CPU a Kernel error.");
+    }
+    free(identificador);
+    enviar_handshake(socket_cpu, "KERNEL");
     liberar_conexion(socket_cpu);
     liberar_conexion(fd_escucha_cpu);
     return;
@@ -59,10 +71,17 @@ void escucha_cpu(t_config* config){
 void handshake_memoria(t_config *config) {
     uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
 
-    enviar_handshake(fd_conexion_memoria);
+    enviar_handshake(fd_conexion_memoria, "KERNEL");
 
-    recibir_handshake(fd_conexion_memoria);
-    log_info(logger, "Handshake Memoria a Kernel OK.");
+    char* identificador = recibir_handshake(fd_conexion_memoria);
+    if (string_equals_ignore_case(identificador, "memoria")) {
+        log_debug(logger, "Handshake Memoria a Kernel OK.");
+    }
+    else {
+        log_error(logger, "Handshake Memoria a Kernel error.");
+    }
+
+    free(identificador);
     liberar_conexion(fd_conexion_memoria);
     return;
 }

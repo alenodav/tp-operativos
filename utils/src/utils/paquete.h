@@ -21,6 +21,11 @@ typedef struct {
     t_buffer* buffer;
 } t_paquete;
 
+typedef struct {
+    char* identificador;
+    uint32_t id_length;
+} t_handshake;
+
 //Crea un paquete a partir de un codigo de operacion y un t_buffer
 t_paquete *crear_paquete(u_int8_t operacion, t_buffer *buffer);
 
@@ -33,8 +38,8 @@ t_paquete *recibir_paquete(uint32_t socket);
 //Libera la memoria asociada a un paquete
 void destruir_paquete(t_paquete *paquete);
 
-void recibir_handshake(uint32_t fd_conexion);
+char* recibir_handshake(uint32_t fd_conexion);
 
-void enviar_handshake(uint32_t fd_conexion);
+void enviar_handshake(uint32_t fd_conexion, char* identificador);
 
 

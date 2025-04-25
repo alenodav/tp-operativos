@@ -30,11 +30,18 @@ int main(int argc, char* argv[]) {
 void handshake_kernel(uint32_t fd_escucha_memoria) {
     uint32_t cliente = esperar_cliente(fd_escucha_memoria);
     
-    recibir_handshake(cliente);
+    char* identificador = recibir_handshake(cliente);
 
-    log_info(logger, "Handshake Kernel a Memoria OK.");
+    if (string_equals_ignore_case(identificador, "KERNEL")) {
+        log_debug(logger, "Handshake Kernel a Memoria OK.");
+    }
+    else {
+        log_error(logger, "Handshake Kernel a Memoria error.");
+    }
 
-    enviar_handshake(cliente);
+    free(identificador);
+
+    enviar_handshake(cliente, "MEMORIA");
 
     liberar_conexion(cliente);
     
@@ -44,11 +51,18 @@ void handshake_kernel(uint32_t fd_escucha_memoria) {
 void handshake_cpu(uint32_t fd_escucha_memoria) {
     uint32_t cliente = esperar_cliente(fd_escucha_memoria);
 
-    recibir_handshake(cliente);
+    char* identificador = recibir_handshake(cliente);
 
-    log_info(logger, "Handshake CPU a Memoria OK.");
+    if (string_equals_ignore_case(identificador, "cpu")) {
+        log_debug(logger, "Handshake CPU a Memoria OK.");
+    }
+    else {
+        log_error(logger, "Handshake CPU a Memoria error.");
+    }
 
-    enviar_handshake(cliente);
+    free(identificador);
+
+    enviar_handshake(cliente, "MEMORIA");
 
     liberar_conexion(cliente);
     
