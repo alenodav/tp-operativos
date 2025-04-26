@@ -13,11 +13,17 @@
 #include "conexion.h"
 
 typedef enum {
-    HANDSHAKE
+    HANDSHAKE,
+    DISPATCH,
+    SAVE_INSTRUCTIONS,
+    SYSCALL,
+    INTERRUPT,
+    FETCH,
+    IO
 } t_operacion;
 
 typedef struct {
-    uint8_t codigo_operacion;
+    t_operacion codigo_operacion;
     t_buffer* buffer;
 } t_paquete;
 
