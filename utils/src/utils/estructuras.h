@@ -50,10 +50,11 @@ typedef struct{
     uint32_t pc;
 } kernel_to_cpu;
 
-typedef struct{
+typedef struct {
+    char* archivo;
+    uint32_t archivo_length;
+    uint32_t tamanio;
     uint32_t pid;
-    t_list* lista_instrucciones;
-    uint32_t size_lista_instrucciones;
 } kernel_to_memoria;
 
 typedef struct {
