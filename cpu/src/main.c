@@ -90,4 +90,5 @@ void handshake_kernel(void* arg){
 
     free(identificador);
     liberar_conexion(fd_kernel);
+    free(args);
 }
