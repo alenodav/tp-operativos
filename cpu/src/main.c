@@ -3,12 +3,19 @@
 t_log* logger;
 
 int main(int argc, char* argv[]) {
+    
     // config
     t_config *config = crear_config("cpu");
 
     // logging 
     logger = crear_log(config, "cpu");
     log_debug(logger, "Config y Logger de cpu creados correctamente.");
+    if (argc < 2 || argc > 2) {
+        log_debug(logger,"Uso: %s <ID_CPU>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+    char* id_cpu = argv[1];
+    log_debug(logger, "CPU de id:%s",id_cpu);
 
     // conexion (cliente a memoria)
 
@@ -23,7 +30,6 @@ int main(int argc, char* argv[]) {
 
     getchar();
 
-    //log_debug(logger, "finalizo el proceso");
 
 
     // liberar
