@@ -8,7 +8,7 @@ typedef enum {
     WRITE,
     READ,
     GOTO,
-    IO,
+    IO_SYSCALL,
     INIT_PROC,
     DUMP_MEMORY,
     EXIT
