@@ -2,6 +2,9 @@
 
 t_log* logger;
 t_config* config;
+uint32_t fd_dispatch;
+uint32_t fd_interrupt;
+uint32_t fd_memoria;
 
 int main(int argc, char* argv[]){
     if (argc < 2 || argc > 2) {
@@ -49,10 +52,10 @@ int main(int argc, char* argv[]){
 
 void handshake_memoria(void* arg){
     char* id_cpu = (char*)arg;
-    uint32_t fd_cpu_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    fd_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
 
-    enviar_handshake(fd_cpu_memoria, "CPU");
-    char* identificador = recibir_handshake(fd_cpu_memoria);
+    enviar_handshake(fd_memoria, "CPU");
+    char* identificador = recibir_handshake(fd_memoria);
 
     if (string_equals_ignore_case(identificador, "memoria")) {
         log_debug(logger, "Handshake Memoria a CPU-%s OK.",id_cpu);
@@ -62,7 +65,7 @@ void handshake_memoria(void* arg){
     }
 
     free(identificador);
-    liberar_conexion(fd_cpu_memoria);
+    liberar_conexion(fd_memoria);
 }
 
 void handshake_kernel(void* arg){
@@ -70,25 +73,50 @@ void handshake_kernel(void* arg){
     char* id_cpu = args->id_cpu;
     char* tipo = args->tipo_conexion;
 
-    uint32_t fd_kernel;
-
+    // conexion dispatch
     if(string_equals_ignore_case(tipo,"DISPATCH")){
-        fd_kernel = crear_socket_cliente(config_get_string_value(config,"IP_KERNEL"),config_get_string_value(config,"PUERTO_KERNEL_DISPATCH"));
-    }else if(string_equals_ignore_case(tipo,"INTERRUPT")){
-        fd_kernel = crear_socket_cliente(config_get_string_value(config,"IP_KERNEL"),config_get_string_value(config,"PUERTO_KERNEL_INTERRUPT"));
+        fd_dispatch = crear_socket_cliente(config_get_string_value(config,"IP_KERNEL"),config_get_string_value(config,"PUERTO_KERNEL_DISPATCH"));
+
+        enviar_handshake(fd_dispatch,id_cpu);
+        char* identificador = recibir_handshake(fd_dispatch);
+
+        if (string_equals_ignore_case(identificador, "kernel")) {
+            log_debug(logger, "Handshake Kernel DISPATCH a CPU-%s OK.", id_cpu);
+        } else {
+            log_error(logger, "Handshake Kernel DISPATCH a CPU-%s error.", id_cpu);
+        }
+
+        free(identificador);
+
+    }else if(string_equals_ignore_case(tipo,"INTERRUPT")){ 
+
+    // conexion interrupt
+        fd_interrupt = crear_socket_cliente(config_get_string_value(config,"IP_KERNEL"),config_get_string_value(config,"PUERTO_KERNEL_INTERRUPT"));
+
+        enviar_handshake(fd_interrupt,id_cpu);
+        char* identificador = recibir_handshake(fd_interrupt);
+
+        if (string_equals_ignore_case(identificador, "kernel")) {
+            log_debug(logger, "Handshake Kernel INTERRUPT a CPU-%s OK.", id_cpu);
+        } else {
+            log_error(logger, "Handshake Kernel INTERRUPT a CPU-%s error.", id_cpu);
+        }
+
+        free(identificador);
     }
 
-    enviar_handshake(fd_kernel,id_cpu);
-    char* identificador = recibir_handshake(fd_kernel);
-
-    if (string_equals_ignore_case(identificador, "kernel")) {
-        log_debug(logger, "Handshake Kernel - %s a CPU-%s OK.",tipo,id_cpu);
-    }
-    else {
-        log_error(logger, "Handshake Kernel - %s a CPU-%s error.",tipo,id_cpu);
-    }
-
-    free(identificador);
-    liberar_conexion(fd_kernel);
     free(args);
+}
+
+void recibir_proceso(void* _){
+    while(1){
+        kernel_to_cpu paquete_proceso;
+
+        if(recv(fd_dispatch,&paquete_proceso,sizeof(kernel_to_cpu),0)<= 0){
+            log_debug(logger,"Error al recibir paquete de proceso.");
+            continue;
+        }
+
+        log_debug(logger, "Recibido PID: %d - PC: %d", paquete_proceso.pid, paquete_proceso.pc);
+    }
 }

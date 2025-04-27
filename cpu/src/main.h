@@ -10,6 +10,7 @@
 
 void handshake_memoria(void*);
 void handshake_kernel(void*);
+void recibir_proceso(void*);
 
 typedef struct {
     char* id_cpu;
