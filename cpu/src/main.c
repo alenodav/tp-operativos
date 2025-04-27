@@ -4,7 +4,7 @@ t_log* logger;
 t_config* config;
 
 int main(int argc, char* argv[]){
-     if (argc < 2 || argc > 2) {
+    if (argc < 2 || argc > 2) {
         log_debug(logger,"Uso: %s <ID_CPU>\n", argv[0]);
         return EXIT_FAILURE;
     }
@@ -17,13 +17,28 @@ int main(int argc, char* argv[]){
 
     config = crear_config("cpu");
 
+    // Conexion a Memoria
     pthread_t thread_memoria;
     pthread_create(&thread_memoria, NULL, handshake_memoria, (void*)id_cpu);
     pthread_detach(thread_memoria); 
 
-    pthread_t thread_kernel;
-    pthread_create(&thread_kernel, NULL, handshake_kernel, (void*)id_cpu);
-    pthread_detach(thread_kernel);
+    // Conexion a Kernel DISPATCH
+    t_handshake_args* args_dispatch = malloc(sizeof(t_handshake_args));
+    args_dispatch->id_cpu = id_cpu;
+    args_dispatch->tipo_conexion = "DISPATCH";
+
+    pthread_t thread_kernel_dispatch;
+    pthread_create(&thread_kernel_dispatch, NULL, handshake_kernel, (void*)args_dispatch);
+    pthread_detach(thread_kernel_dispatch);
+
+    // Conexion a Kernel INTERRUPT
+    t_handshake_args* args_interrupt = malloc(sizeof(t_handshake_args));
+    args_interrupt->id_cpu = id_cpu;
+    args_interrupt->tipo_conexion = "INTERRUPT";
+
+    pthread_t thread_kernel_interrupt;
+    pthread_create(&thread_kernel_interrupt, NULL, handshake_kernel, (void*)args_interrupt);
+    pthread_detach(thread_kernel_interrupt);
 
     getchar();
 
@@ -51,19 +66,28 @@ void handshake_memoria(void* arg){
 }
 
 void handshake_kernel(void* arg){
-    char* id_cpu = (char*)arg;
-    uint32_t fd_cpu_kernel = crear_socket_cliente(config_get_string_value(config, "IP_KERNEL"), config_get_string_value(config, "PUERTO_KERNEL_DISPATCH"));
+    t_handshake_args* args = (t_handshake_args*)arg;
+    char* id_cpu = args->id_cpu;
+    char* tipo = args->tipo_conexion;
 
-    enviar_handshake(fd_cpu_kernel,id_cpu);
-    char* identificador = recibir_handshake(fd_cpu_kernel);
+    uint32_t fd_kernel;
+
+    if(string_equals_ignore_case(tipo,"DISPATCH")){
+        fd_kernel = crear_socket_cliente(config_get_string_value(config,"IP_KERNEL"),config_get_string_value(config,"PUERTO_KERNEL_DISPATCH"));
+    }else if(string_equals_ignore_case(tipo,"INTERRUPT")){
+        fd_kernel = crear_socket_cliente(config_get_string_value(config,"IP_KERNEL"),config_get_string_value(config,"PUERTO_KERNEL_INTERRUPT"));
+    }
+
+    enviar_handshake(fd_kernel,id_cpu);
+    char* identificador = recibir_handshake(fd_kernel);
 
     if (string_equals_ignore_case(identificador, "kernel")) {
-        log_debug(logger, "Handshake Kernel a CPU-%s OK.",id_cpu);
+        log_debug(logger, "Handshake Kernel - %s a CPU-%s OK.",tipo,id_cpu);
     }
     else {
-        log_error(logger, "Handshake Kernel a CPU-%s error.",id_cpu);
+        log_error(logger, "Handshake Kernel - %s a CPU-%s error.",tipo,id_cpu);
     }
 
     free(identificador);
-    liberar_conexion(fd_cpu_kernel);
+    liberar_conexion(fd_kernel);
 }

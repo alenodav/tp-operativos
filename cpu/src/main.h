@@ -10,3 +10,8 @@
 
 void handshake_memoria(void*);
 void handshake_kernel(void*);
+
+typedef struct {
+    char* id_cpu;
+    char* tipo_conexion;
+} t_handshake_args;
