@@ -176,7 +176,7 @@ bool consultar_a_memoria(uint32_t tamanio_proceso, uint32_t pid) {
 
 void enviar_instrucciones(kernel_to_memoria* archivo) {
     uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
-    t_buffer *buffer = serializar_t_archivo(archivo);
+    t_buffer *buffer = serializar_kernel_to_memoria(archivo);
     t_paquete *consulta = crear_paquete(SAVE_INSTRUCTIONS, buffer);
     enviar_paquete(consulta, fd_conexion_memoria);
     liberar_conexion(fd_conexion_memoria);
