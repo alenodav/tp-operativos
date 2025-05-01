@@ -52,3 +52,13 @@ char *buffer_read_string(t_buffer *buffer, uint32_t *length) {
     buffer_read(buffer, res, *length);
     return res;
 }
+
+void buffer_add_bool(t_buffer *buffer, bool data) {
+    buffer_add(buffer, %data, sizeof(bool));
+}
+
+bool buffer_read_bool(t_buffer *buffer) {
+    bool ret = false;
+    buffer_read(buffer, &ret, sizeof(bool));
+    return ret;
+}

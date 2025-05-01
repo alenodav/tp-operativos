@@ -65,7 +65,7 @@ void escucha_io(){
     liberar_conexion(fd_escucha_io);
     return;
 }
-//prueba commit
+
 //Creo escucha cpu
 void escucha_cpu(){
     uint32_t fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));    
