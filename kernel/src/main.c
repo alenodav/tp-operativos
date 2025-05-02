@@ -12,6 +12,10 @@ int main(int argc, char* argv[]) {
     cola_new = list_create();
     cola_ready = list_create();
     cola_blocked = list_create();
+    cola_exec = list_create();
+    archivos_instruccion = list_create();
+    list_add(archivos_instruccion, archivo_inicial);
+    sem_init(sem_largo_plazo, 0, 1);
     
     // pthread_t thread_io;
     // pthread_create(&thread_io, NULL, escucha_io, config); // Se crea un thread que corra escucha_io(config)
@@ -41,6 +45,8 @@ int main(int argc, char* argv[]) {
     list_destroy(cola_new);
     list_destroy(cola_ready);
     list_destroy(cola_blocked);
+    list_destroy(cola_exec);
+    list_destroy(archivos_instruccion);
 
     config_destroy(config);
     log_info(logger, "Finalizo el proceso.");
@@ -103,11 +109,11 @@ void handshake_memoria() {
     return;
 }
 
-void largo_plazo(kernel_to_memoria* archivo) {
+void largo_plazo() {
     //Seleccion de algoritmo
     char* algoritmo_config = config_get_string_value(config, "ALGORITMO_COLA_NEW");
     if (string_equals_ignore_case(algoritmo_config, "FIFO")) {
-        planificar_fifo(archivo);
+        planificar_fifo_largo_plazo();
     }
     else if (string_equals_ignore_case(algoritmo_config, "PMCP")) {
 
@@ -118,15 +124,21 @@ void largo_plazo(kernel_to_memoria* archivo) {
     return;
 }
 
-void planificar_fifo(kernel_to_memoria* archivo) {
-    t_pcb *pcb = crear_proceso(archivo);
-    bool consulta_memoria = consultar_a_memoria(archivo->tamanio, pcb->pid);
-    if (consulta_memoria) {
-        enviar_instrucciones(archivo);
-        pasar_ready();
-    }
-    else {
-        log_debug(logger, "## (%d) No hay espacio suficiente para inicializar el proceso", pcb->pid);
+void planificar_fifo_largo_plazo() {
+    while(1) {
+        if (list_is_empty(archivos_instruccion)) {
+            sem_wait(sem_largo_plazo);
+        }
+        t_pcb *pcb = crear_proceso();
+        bool consulta_memoria = consultar_a_memoria();
+        if (consulta_memoria) {
+            enviar_instrucciones();
+            pasar_ready();
+        }
+        else {
+            log_debug(logger, "## (%d) No hay espacio suficiente para inicializar el proceso", pcb->pid);
+            sem_wait(sem_largo_plazo);
+        }
     }
 }
 
@@ -138,7 +150,8 @@ t_estado_metricas *crear_metrica_estado(t_estado estado) {
     return metrica_agregar;
 }
 
-t_pcb* crear_proceso(kernel_to_memoria* archivo) {
+t_pcb* crear_proceso() {
+    kernel_to_memoria *archivo = list_get(archivos_instruccion, 0);
     t_pcb *pcb = malloc(sizeof(t_pcb));
     pcb->pid = pid_counter;
     pcb->pc = 0;
@@ -152,7 +165,10 @@ t_pcb* crear_proceso(kernel_to_memoria* archivo) {
     return pcb;
 }
 
-bool consultar_a_memoria(uint32_t tamanio_proceso, uint32_t pid) {
+bool consultar_a_memoria() {
+    kernel_to_memoria *archivo = list_get(archivos_instruccion, 0);
+    uint32_t tamanio_proceso = archivo->tamanio;
+    uint32_t pid = archivo->pid;
     bool ret = false;
     uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
     t_buffer* buffer = buffer_create(sizeof(uint32_t));
@@ -174,7 +190,8 @@ bool consultar_a_memoria(uint32_t tamanio_proceso, uint32_t pid) {
     return ret;
 }
 
-void enviar_instrucciones(kernel_to_memoria* archivo) {
+void enviar_instrucciones() {
+    kernel_to_memoria *archivo = list_remove(archivos_instruccion, 0);
     uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
     t_buffer *buffer = serializar_kernel_to_memoria(archivo);
     t_paquete *consulta = crear_paquete(SAVE_INSTRUCTIONS, buffer);
@@ -200,4 +217,81 @@ void pasar_ready() {
     t_estado_metricas *ready = crear_metrica_estado(READY);
     list_add(pcb->metricas, ready);
     list_add(cola_ready, pcb);
+}
+
+void terminar_proceso(uint32_t pid) {
+    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer *buffer = buffer_create(sizeof(uint32_t));
+    buffer_add_uint32(buffer, pid);
+    t_paquete *paquete = crear_paquete(TERMINAR_PROCESO, buffer);
+    enviar_paquete(paquete, fd_conexion_memoria);
+    t_paquete *respuesta = recibir_paquete(fd_conexion_memoria);
+    if(respuesta->codigo_operacion != TERMINAR_PROCESO) {
+        log_error(logger, "(%d) Codigo de operacion incorrecto para terminar_proceso.", pid);
+        return;
+    }
+    bool confirmacion = buffer_read_bool(respuesta->buffer);
+    if (!confirmacion) {
+        log_error(logger, "(%d) Error en terminar_proceso. Revisar log memoria.", pid);
+        return;
+    }
+    t_pcb *proceso = pcb_by_pid(cola_exec, pid);
+    t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
+    temporal_stop(metricas_exec->MT);
+    proceso->estado_actual = EXIT_STATUS;
+    t_estado_metricas *exit = crear_metrica_estado(EXIT_STATUS);
+    list_add(proceso->metricas, exit);
+    loggear_metricas_estado(proceso);
+
+    return;
+}
+
+t_pcb* pcb_by_pid(t_list* pcb_list, uint32_t pid) {
+    bool pid_equals(void *pcb) {
+        t_pcb *pcb_cast = (t_pcb*)pcb;
+        return pcb_cast->pid == pid;
+    }
+    return list_remove_by_condition(pcb_list, pid_equals);
+}
+
+void loggear_metricas_estado(t_pcb* proceso) {
+    char* metricas_estado = "";
+    t_list_iterator *metricas_iterator = list_iterator_create(proceso->metricas);
+    while(list_iterator_has_next(metricas_iterator)){
+        t_estado_metricas* metrica = list_iterator_next(metricas_iterator);
+        string_append_with_format(&metricas_estado, "%s  (%d) (%lu), ", t_estado_to_string(metrica->estado), metrica->ME, metrica->MT->elapsed_ms);
+        list_iterator_remove(metricas_iterator);
+        free(metrica);
+    }
+}
+
+char* t_estado_to_string(t_estado estado) {
+    switch (estado)
+    {
+    case NEW:
+        return "NEW";
+        break;
+    case READY:
+        return "READY";
+        break;
+    case EXEC: 
+        return "EXEC";
+        break;
+    case BLOCKED:
+        return "BLOCKED";
+        break;
+    case SUSP_BLOCKED:
+        return "SUSPENDED BLOCKED";
+        break;
+    case SUSP_READY:
+        return "SUSPENDED READY";
+        break;
+    case EXIT_STATUS:
+        return "EXIT";
+        break;
+
+    default:
+        return "";
+        break;
+    }
 }

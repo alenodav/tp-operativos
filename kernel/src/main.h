@@ -9,6 +9,7 @@
 #include <commons/temporal.h>
 #include <commons/collections/queue.h>
 #include <utils/estructuras.h>
+#include <semaphore.h>
 
 typedef enum {
     NEW,
@@ -36,18 +37,25 @@ typedef struct {
 void escucha_io();
 void handshake_memoria();
 void escucha_cpu();
-void largo_plazo(kernel_to_memoria*);
-void planificar_fifo(kernel_to_memoria*);
+void largo_plazo();
+void planificar_fifo_largo_plazo();
 t_estado_metricas *crear_metrica_estado(t_estado);
-t_pcb *crear_proceso(kernel_to_memoria*);
-bool consultar_a_memoria(uint32_t tamanio_proceso, uint32_t pid);
-void enviar_instrucciones(kernel_to_memoria* archivo);
+t_pcb *crear_proceso();
+bool consultar_a_memoria();
+void enviar_instrucciones();
 t_buffer *serializar_kernel_to_memoria(kernel_to_memoria* archivo);
 void pasar_ready();
+void terminar_proceso(uint32_t pid);
+t_pcb* pcb_by_pid(t_list* pcb_list, uint32_t pid);
+void loggear_metricas_estado(t_pcb*);
+char* t_estado_to_string(t_estado);
 
 t_log *logger;
 t_config* config;
 uint32_t pid_counter = 0;
 t_list *cola_new;
 t_list *cola_ready;
+t_list *cola_exec;
 t_list *cola_blocked;
+t_list *archivos_instruccion;
+sem_t *sem_largo_plazo;
