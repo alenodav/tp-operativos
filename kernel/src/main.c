@@ -5,6 +5,7 @@ int main(int argc, char* argv[]) {
     logger = crear_log(config, "kernel");
     log_debug(logger, "Config y Logger creados correctamente.");
 
+    pid_counter = 0;
     kernel_to_memoria *archivo_inicial = malloc(sizeof(kernel_to_memoria));
     archivo_inicial->archivo = argv[1];
     archivo_inicial->archivo_length = string_length(archivo_inicial->archivo) + 1;
@@ -219,7 +220,8 @@ void pasar_ready() {
     list_add(cola_ready, pcb);
 }
 
-void terminar_proceso(uint32_t pid) {
+bool terminar_proceso_memoria (uint32_t pid) {
+    bool retorno = false;
     uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
     t_buffer *buffer = buffer_create(sizeof(uint32_t));
     buffer_add_uint32(buffer, pid);
@@ -228,11 +230,24 @@ void terminar_proceso(uint32_t pid) {
     t_paquete *respuesta = recibir_paquete(fd_conexion_memoria);
     if(respuesta->codigo_operacion != TERMINAR_PROCESO) {
         log_error(logger, "(%d) Codigo de operacion incorrecto para terminar_proceso.", pid);
-        return;
     }
-    bool confirmacion = buffer_read_bool(respuesta->buffer);
-    if (!confirmacion) {
-        log_error(logger, "(%d) Error en terminar_proceso. Revisar log memoria.", pid);
+    else {
+        bool confirmacion = buffer_read_bool(respuesta->buffer);
+        if (!confirmacion) {
+            log_error(logger, "(%d) Error en terminar_proceso. Revisar log memoria.", pid);
+        }
+        else{
+            retorno = true;
+        }
+    }
+    liberar_conexion(fd_conexion_memoria);
+    destruir_paquete(respuesta);
+    return retorno;
+}
+
+void terminar_proceso(uint32_t pid) {
+    bool consulta_memoria = terminar_proceso_memoria(pid);
+    if (!consulta_memoria) {
         return;
     }
     t_pcb *proceso = pcb_by_pid(cola_exec, pid);
@@ -242,6 +257,8 @@ void terminar_proceso(uint32_t pid) {
     t_estado_metricas *exit = crear_metrica_estado(EXIT_STATUS);
     list_add(proceso->metricas, exit);
     loggear_metricas_estado(proceso);
+    free(proceso);
+    sem_post(sem_largo_plazo);
 
     return;
 }
@@ -263,6 +280,8 @@ void loggear_metricas_estado(t_pcb* proceso) {
         list_iterator_remove(metricas_iterator);
         free(metrica);
     }
+    list_destroy(proceso->metricas);
+    log_info(logger, "## (%d) - Metricas de estado: %s", proceso->pid, metricas_estado);
 }
 
 char* t_estado_to_string(t_estado estado) {
