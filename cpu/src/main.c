@@ -7,7 +7,7 @@ uint32_t fd_interrupt;
 uint32_t fd_memoria;
 
 int main(int argc, char* argv[]){
-    if (argc < 2 || argc > 2) {
+    if (argc != 2) {
         log_debug(logger,"Uso: %s <ID_CPU>\n", argv[0]);
         return EXIT_FAILURE;
     }
@@ -110,13 +110,14 @@ void handshake_kernel(void* arg){
 
 void recibir_proceso(void* _){
     while(1){
-        kernel_to_cpu paquete_proceso;
+        t_paquete* paquete = recibir_paquete(fd_dispatch);
 
-        if(recv(fd_dispatch,&paquete_proceso,sizeof(kernel_to_cpu),0)<= 0){
-            log_debug(logger,"Error al recibir paquete de proceso.");
-            continue;
-        }
+        kernel_to_cpu paquete_proceso;
+        paquete_proceso.pid = buffer_read_uint32(paquete->buffer);
+        paquete_proceso.pc = buffer_read_uint32(paquete->buffer);
 
         log_debug(logger, "Recibido PID: %d - PC: %d", paquete_proceso.pid, paquete_proceso.pc);
+
+        destruir_paquete(paquete);
     }
 }
