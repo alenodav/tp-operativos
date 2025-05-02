@@ -178,10 +178,7 @@ bool consultar_a_memoria() {
     enviar_paquete(paquete, fd_conexion_memoria);
     t_paquete *retorno = recibir_paquete(fd_conexion_memoria);
     if (retorno->codigo_operacion == CONSULTA_MEMORIA_PROCESO) {
-        uint8_t retorno = buffer_read_uint8(paquete->buffer);
-        if (retorno != -1) {
-            ret = true;
-        }
+        ret = buffer_read_bool(paquete->buffer);
     }
     else {
         log_error(logger, "## (%d) Codigo de operación incorrecto para consultar a memoria.", pid);
