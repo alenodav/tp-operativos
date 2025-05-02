@@ -65,7 +65,6 @@ void handshake_memoria(void* arg){
     }
 
     free(identificador);
-    liberar_conexion(fd_memoria);
 }
 
 void handshake_kernel(void* arg){
@@ -118,6 +117,61 @@ void recibir_proceso(void* _){
 
         log_debug(logger, "Recibido PID: %d - PC: %d", paquete_proceso.pid, paquete_proceso.pc);
 
+
+        // le envio el pc y pid a memoria para que me devuelva la sig instruccion
+        solicitar_instruccion(paquete_proceso.pid, paquete_proceso.pc);
+
         destruir_paquete(paquete);
     }
+}
+
+void solicitar_instruccion(uint32_t pid,uint32_t pc){
+    t_buffer* buffer = buffer_create(sizeof(uint32_t)*2);
+    buffer_add_uint32(buffer,pid);
+    buffer_add_uint32(buffer,pc);
+
+    t_paquete* paquete = crear_paquete(SAVE_INSTRUCTIONS,buffer);
+    enviar_paquete(paquete,fd_memoria);
+
+    buffer_destroy(buffer);
+    destruir_paquete(paquete);
+
+    // recibo la sig instruccion
+    t_paquete* siguiente_instruccion = recibir_paquete(fd_memoria);
+     
+    uint32_t instruccion_int = buffer_read_uint32(siguiente_instruccion->buffer);
+    t_instruccion instruccion = (t_instruccion)instruccion_int;
+
+    switch (instruccion) {
+        case NOOP:
+            log_debug(logger, "Instrucción NOOP");
+            break;
+        case WRITE:
+            log_debug(logger, "Instrucción WRITE");
+            break;
+        case READ:
+            log_debug(logger, "Instrucción READ");
+            break;
+        case GOTO:
+            log_debug(logger, "Instrucción GOTO");
+            break;
+        case IO_SYSCALL:
+            log_debug(logger, "Instrucción IO_SYSCALL");
+            break;
+        case INIT_PROC:
+            log_debug(logger, "Instrucción INIT_PROC");
+            break;
+        case DUMP_MEMORY:
+            log_debug(logger, "Instrucción DUMP_MEMORY");
+            break;
+        case EXIT:
+            log_debug(logger, "Instrucción EXIT");
+            break;
+        default:
+            log_error(logger, "Instrucción desconocida");
+            break;
+    }
+
+
+    destruir_paquete(siguiente_instruccion);
 }
