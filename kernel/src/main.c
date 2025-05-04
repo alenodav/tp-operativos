@@ -17,6 +17,26 @@ int main(int argc, char* argv[]) {
     archivos_instruccion = list_create();
     list_add(archivos_instruccion, archivo_inicial);
     sem_init(sem_largo_plazo, 0, 1);
+    sem_init(sem_cpus, 0, 1);
+    sem_init(sem_io, 0, 1);
+    inicio_modulo = false;
+    fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));
+    fd_escucha_cpu_interrupt = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_INTERRUPT"));
+    cpu_list = list_create();
+    fd_escucha_io = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_IO"));  
+    io_list = list_create();
+
+    pthread_t administrador_cpu_dispatch;
+    pthread_create(&administrador_cpu_dispatch, NULL, (void*)administrar_cpus_dispatch, NULL);
+    pthread_detach(administrador_cpu_dispatch);
+
+    pthread_t administrador_cpu_interrupt;
+    pthread_create(&administrador_cpu_interrupt, NULL, (void*)administrar_cpus_interrupt, NULL);
+    pthread_detach(administrador_cpu_interrupt);
+
+    pthread_t administrador_io;
+    pthread_create(&administrador_io, NULL, (void*)administrar_dispositivos_io, NULL);
+    pthread_detach(administrador_io);
     
     // pthread_t thread_io;
     // pthread_create(&thread_io, NULL, escucha_io, config); // Se crea un thread que corra escucha_io(config)
@@ -34,14 +54,13 @@ int main(int argc, char* argv[]) {
     // pthread_detach(thread_cpu);
 
     getchar(); // Para que el progrma no termine antes que los threads
+    inicio_modulo = true;
+    liberar_conexion(fd_escucha_cpu);
+    liberar_conexion(fd_escucha_cpu_interrupt);
 
     pthread_t planificador_largo_plazo;
     pthread_create(&planificador_largo_plazo, NULL, (void*)largo_plazo, (void*)archivo_inicial);
     pthread_join(planificador_largo_plazo, NULL);
-
-    // pthread_t administrador_dispositivos;
-    // pthread_create(&administrador_dispositivos, NULL, (void*)administrar_dispositivos, NULL);
-    // pthread_join(administrador_dispositivos, NULL);
 
     list_destroy(cola_new);
     list_destroy(cola_ready);
@@ -56,8 +75,7 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-void escucha_io(){
-    uint32_t fd_escucha_io = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_IO"));    
+void escucha_io(){  
     uint32_t socket_io = esperar_cliente(fd_escucha_io);
     char *identificador = recibir_handshake(socket_io);
     if (string_equals_ignore_case(identificador, "io")) {
@@ -310,4 +328,100 @@ char* t_estado_to_string(t_estado estado) {
         return "";
         break;
     }
+}
+
+void administrar_cpus_dispatch() {   
+    while (inicio_modulo) {
+        pthread_t thread;
+        uint32_t *socket_cpu = malloc(sizeof(uint32_t));
+        *socket_cpu = esperar_cliente(fd_escucha_cpu);
+        pthread_create(&thread, NULL, (void*)agregar_cpu_dispatch, socket_cpu);
+        pthread_detach(thread);
+    } 
+}
+
+void agregar_cpu_dispatch(uint32_t* socket) {
+    char *identificador = recibir_handshake(*socket);
+    if (string_contains(identificador, "cpu")) {
+        log_debug(logger, "Handshake CPU a Kernel OK.");
+    }
+    else {
+        log_error(logger, "Handshake CPU a Kernel error.");
+    }
+    enviar_handshake(*socket, "KERNEL");
+    t_cpu *cpu_agregar = malloc(sizeof(t_cpu));
+    cpu_agregar->identificador = identificador;
+    cpu_agregar->socket_dispatch = *socket;
+    cpu_agregar->estado = false;
+    sem_wait(sem_cpus);
+    list_add(cpu_list, cpu_agregar);
+    sem_post(sem_cpus);
+    return;
+}
+
+void administrar_cpus_interrupt() {   
+    while (inicio_modulo) {
+        pthread_t thread;
+        uint32_t *socket_cpu = malloc(sizeof(uint32_t));
+        *socket_cpu = esperar_cliente(fd_escucha_cpu);
+        pthread_create(&thread, NULL, (void*)agregar_cpu_interrupt, socket_cpu);
+        pthread_detach(thread);
+    } 
+}
+
+void agregar_cpu_interrupt(uint32_t* socket) {
+    char *identificador = recibir_handshake(*socket);
+    if (string_contains(identificador, "cpu")) {
+        log_debug(logger, "Handshake CPU a Kernel OK.");
+    }
+    else {
+        log_error(logger, "Handshake CPU a Kernel error.");
+    }
+    enviar_handshake(*socket, "KERNEL");
+    t_cpu *cpu_a_guardar = cpu_find_by_id(identificador);
+    sem_wait(sem_cpus);
+    cpu_a_guardar->socket_interrupt = *socket;
+    sem_post(sem_cpus);
+    free(identificador);
+    return;
+}
+
+t_cpu *cpu_find_by_id (char *id) {
+    t_cpu *cpu_ret = malloc(sizeof(t_cpu));
+    bool id_equals(void *cpu) {
+        t_cpu *cpu_cast = (t_cpu*)cpu;
+        return string_equals_ignore_case(cpu_cast->identificador, id);
+    }   
+    cpu_ret = list_find(cpu_list, id_equals);
+    return cpu_ret;
+}
+
+void administrar_dispositivos_io () {
+    while (1) {
+        pthread_t thread;
+        uint32_t *socket_io = malloc(sizeof(uint32_t));
+        *socket_io = esperar_cliente(fd_escucha_cpu);
+        pthread_create(&thread, NULL, (void*)agregar_io, socket_io);
+        pthread_detach(thread);
+    } 
+}
+
+void agregar_io (uint32_t *socket) {
+    char *identificador = recibir_handshake(*socket);
+    if (string_contains(identificador, "io")) {
+        log_debug(logger, "Handshake IO a Kernel OK.");
+    }
+    else {
+        log_error(logger, "Handshake IO a Kernel error.");
+    }
+    enviar_handshake(*socket, "KERNEL");
+    t_io *io_agregar = malloc(sizeof(t_io));
+    io_agregar->identificador = identificador;
+    io_agregar->estado = false;
+    io_agregar->socket = *socket;
+    io_agregar->proceso_ejecucion = -1;
+    io_agregar->cola_procesos = queue_create();
+    sem_wait(sem_io);
+    list_add(io_list, io_agregar);
+    sem_post(sem_io);
 }

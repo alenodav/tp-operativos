@@ -34,6 +34,21 @@ typedef struct {
     t_estado estado_actual;
 } t_pcb;
 
+typedef struct {
+    char* identificador;
+    bool estado;
+    uint32_t socket_dispatch;
+    uint32_t socket_interrupt;
+} t_cpu;
+
+typedef struct {
+    char* identificador;
+    bool estado;
+    uint32_t socket;
+    uint32_t proceso_ejecucion;
+    t_queue *cola_procesos;
+} t_io;
+
 void escucha_io();
 void handshake_memoria();
 void escucha_cpu();
@@ -50,13 +65,28 @@ void terminar_proceso(uint32_t);
 t_pcb* pcb_by_pid(t_list*, uint32_t);
 void loggear_metricas_estado(t_pcb*);
 char* t_estado_to_string(t_estado);
+void administrar_cpus_dispatch();
+void agregar_cpu_dispatch(uint32_t* socket);
+void administrar_cpus_interrupt();
+void agregar_cpu_interrupt(uint32_t* socket);
+t_cpu *cpu_find_by_id (char *id);
+void agregar_io (uint32_t *socket);
+void administrar_dispositivos_io();
 
 t_log *logger;
 t_config* config;
 uint32_t pid_counter;
+uint32_t fd_escucha_cpu;
+uint32_t fd_escucha_cpu_interrupt;
+uint32_t fd_escucha_io;
 t_list *cola_new;
 t_list *cola_ready;
 t_list *cola_exec;
 t_list *cola_blocked;
 t_list *archivos_instruccion;
+t_list *io_list;
+t_list *cpu_list;
+bool inicio_modulo;
 sem_t *sem_largo_plazo;
+sem_t *sem_cpus;
+sem_t *sem_io;
