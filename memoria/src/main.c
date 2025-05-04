@@ -1,13 +1,13 @@
 #include <main.h>
+
 t_log *logger;
-t_list* lista_procesos;
+t_list* instrucciones;
 t_memoria tmemoria;
 
 int main(int argc, char* argv[]) {
     t_config *config = crear_config("memoria");
     logger = crear_log(config, "memoria");
     log_debug(logger, "Config y Logger creados correctamente.");
-    lista_procesos = list_create();
 
     uint32_t fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
 
@@ -125,8 +125,8 @@ void recibir_instrucciones(uint32_t fd_kernel, uint32_t pid){
 para esta ocasion y para hacerlo de manera simplificada lo modelo de manera tal
 para que si el tamaño es menor al de la memoria, hay espacio, devuelve true y kernel puede enviar las instrucciones */
 bool verificar_espacio_memoria(uint32_t pid, uint32_t tamanio){
-    uint32_t tamanio_memoria_default = 4096 //esta la tengo que leer del archivo de configuracion
-    return tamanio_memoria_default > tamanio
+    uint32_t tamanio_memoria_default = 4096; //esta la tengo que leer del archivo de configuracion
+    return tamanio_memoria_default > tamanio;
 
 }
 
@@ -152,16 +152,15 @@ kernel_to_memoria* deserializar_kernel_to_memoria(t_buffer* buffer) {
 void cargar_instrucciones(char* path) {
     FILE* archivo = fopen(path, "r");
     if (!archivo) {
-        log_error(logger, "No se pudo abrir el archivo: %s", path);
-        return NULL;
+        log_error(logger, "No se pudo abrir el archivo: %s", archivo);
+        return;
     }
 
-    t_list* instrucciones = list_create();
+    instrucciones = list_create(); 
     char* linea = NULL;
     size_t len = 0;
 
     while (getline(&linea, &len, archivo) != -1) {
-        // Elimina salto de línea
         linea[strcspn(linea, "\n")] = 0;
 
         t_instruccion* nueva_instruccion = malloc(sizeof(t_instruccion));
@@ -184,6 +183,6 @@ void cargar_instrucciones(char* path) {
 
     free(linea);
     fclose(archivo);
-    
-} 
+}
+
 
