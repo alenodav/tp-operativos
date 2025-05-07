@@ -185,4 +185,8 @@ void cargar_instrucciones(char* path) {
     fclose(archivo);
 }
 
+void leer_configuracion(char* config){
+    
+}
+
 

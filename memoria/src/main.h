@@ -13,3 +13,18 @@ typedef struct{
     uint32_t pid;
     t_list* lista_instrucciones;
 } t_proceso;
+typedef struct{
+    char* puerto_escucha;
+    int tamanio_memoria;
+    int tamanio_pagina;
+    int entradas_por_tabla;
+    int cantidad_niveles;
+    int retardo_memoria;
+    char* path_swapfile;
+    char* retardo_swap;
+    char* log_level_trace;
+    char* dump_path;
+    char* path_instrucciones;
+} t_config_memoria;
+
+void leer_configuracion(char *);
