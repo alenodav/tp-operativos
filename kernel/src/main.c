@@ -12,16 +12,16 @@ int main(int argc, char* argv[]) {
     pthread_create(&thread_io, NULL, escucha_io, config); // Se crea un thread que corra escucha_io(config)
     pthread_detach(thread_io);  // Se separa la ejecución del thread de la del programa principal
 
-    pthread_t thread_memoria;
-    pthread_create(&thread_memoria, NULL, handshake_memoria, config);
-    pthread_detach(thread_memoria); 
+    // pthread_t thread_memoria;
+    // pthread_create(&thread_memoria, NULL, handshake_memoria, config);
+    // pthread_detach(thread_memoria); 
 
-    //sleep(1);
+    // //sleep(1);
 
-    //Creo un hilo para que corra escucha_cpu(config)
-    pthread_t thread_cpu;
-    pthread_create(&thread_cpu, NULL, escucha_cpu, config);
-    pthread_detach(thread_cpu);
+    // //Creo un hilo para que corra escucha_cpu(config)
+    // pthread_t thread_cpu;
+    // pthread_create(&thread_cpu, NULL, escucha_cpu, config);
+    // pthread_detach(thread_cpu);
 
     getchar(); // Para que el progrma no termine antes que los threads
 
@@ -35,12 +35,13 @@ int main(int argc, char* argv[]) {
 void escucha_io(t_config* config){
     uint32_t fd_escucha_io = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_IO"));    
     uint32_t socket_io = esperar_cliente(fd_escucha_io);
-    char *identificador = recibir_handshake(socket_io);
-    if (string_equals_ignore_case(identificador, "io")) {
-        log_debug(logger, "Handshake IO a Kernel OK.");
+    char* identificador = recibir_handshake(socket_io);
+    if (!string_is_empty(identificador)) {
+        log_info(logger, "Handshake IO a Kernel OK.");
+        log_info(logger, string_from_format("Se inicio la instancia: %s", identificador));
     }
     else {
-        log_error(logger, "Handshake IO a Kernel error.");
+        log_error(logger, "Handshake IO a Kernel fallido, la instancia de IO debe tener un nombre.");
     }
     free(identificador);
     enviar_handshake(socket_io, "KERNEL");
