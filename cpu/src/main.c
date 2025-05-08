@@ -104,6 +104,7 @@ void handshake_kernel(void* arg){
 
 void recibir_proceso(void* _){
     while(1){
+        // recibo del kernel el pid y pc
         t_paquete* paquete = recibir_paquete(fd_dispatch);
 
         kernel_to_cpu paquete_proceso;
@@ -113,7 +114,7 @@ void recibir_proceso(void* _){
         log_debug(logger, "Recibido PID: %d - PC: %d", paquete_proceso.pid, paquete_proceso.pc);
 
 
-        // le envio el pc y pid a memoria para que me devuelva la sig instruccion
+        // FETCH a memoria
         solicitar_instruccion(paquete_proceso.pid, paquete_proceso.pc);
 
         destruir_paquete(paquete);
@@ -125,47 +126,67 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
     buffer_add_uint32(buffer,pid);
     buffer_add_uint32(buffer,pc);
 
-    t_paquete* paquete = crear_paquete(SAVE_INSTRUCTIONS,buffer);
+    t_paquete* paquete = crear_paquete(FETCH,buffer);
     enviar_paquete(paquete,fd_memoria);
 
     buffer_destroy(buffer);
     destruir_paquete(paquete);
 
-    // recibo la sig instruccion
+    // recibo la siguiente instruccion de memoria
     t_paquete* siguiente_instruccion = recibir_paquete(fd_memoria);
-     
+    
+    // DECODE
     uint32_t instruccion_int = buffer_read_uint32(siguiente_instruccion->buffer);
     t_instruccion instruccion = (t_instruccion)instruccion_int;
 
     switch (instruccion) {
         case NOOP:
-            log_debug(logger, "Instrucción NOOP");
+            log_debug(logger, "PID: %d - Ejecutando: NOOP", pid);
             break;
-        case WRITE:
-            log_debug(logger, "Instrucción WRITE");
+        case WRITE: {
+            uint32_t direccion = buffer_read_uint32(siguiente_instruccion->buffer);
+            uint32_t length = buffer_read_uint32(siguiente_instruccion->buffer);
+            char* valor = buffer_read_string(siguiente_instruccion->buffer, &length);
+            log_debug(logger, "PID: %d - Ejecutando: WRITE - Direccion: %d, valor: %d", pid, direccion, valor);
             break;
-        case READ:
-            log_debug(logger, "Instrucción READ");
+        }
+        case READ: {
+            uint32_t direccion = buffer_read_uint32(siguiente_instruccion->buffer);
+            uint32_t tamanio = buffer_read_uint32(siguiente_instruccion->buffer);
+            log_debug(logger, "PID: %d - Ejecutando: READ - Direccion: %d, tamanio: %d", pid, direccion, tamanio);
             break;
-        case GOTO:
-            log_debug(logger, "Instrucción GOTO");
+        }
+        case GOTO: {
+            uint32_t direccion = buffer_read_uint32(siguiente_instruccion->buffer);
+            log_debug(logger, "PID: %d - Ejecutando: GOTO - direccion: %d", pid, direccion);
             break;
-        case IO_SYSCALL:
-            log_debug(logger, "Instrucción IO_SYSCALL");
+        }
+        case IO_SYSCALL: {
+             uint32_t length = buffer_read_uint32(siguiente_instruccion->buffer);
+            char* dispositivo = buffer_read_string(siguiente_instruccion->buffer, &length);
+            uint32_t tiempo = buffer_read_uint32(siguiente_instruccion->buffer);
+            log_debug(logger, "PID: %d - Ejecutando: IO - Dispositivo: %s, Tiempo: %d", pid, dispositivo, tiempo);
             break;
-        case INIT_PROC:
-            log_debug(logger, "Instrucción INIT_PROC");
+        }
+        case INIT_PROC: {
+            uint32_t length = buffer_read_uint32(siguiente_instruccion->buffer);
+            char* nombre = buffer_read_string(siguiente_instruccion->buffer, &length);
+            uint32_t tamanio = buffer_read_uint32(siguiente_instruccion->buffer);
+            log_debug(logger, "PID: %d - Ejecutando: INIT_PROC - Nombre: %s, Tamaño: %d", pid, nombre, tamanio);
+            free(nombre);
             break;
+        }
         case DUMP_MEMORY:
-            log_debug(logger, "Instrucción DUMP_MEMORY");
+            log_debug(logger, "PID: %d - Ejecutando: DUMP_MEMORY", pid);
             break;
         case EXIT:
-            log_debug(logger, "Instrucción EXIT");
+            log_debug(logger, "PID: %d - Ejecutando: EXIT", pid);
             break;
         default:
-            log_error(logger, "Instrucción desconocida ");
+            log_error(logger, "PID: %d - Instrucción desconocida", pid);
             break;
     }
+
 
 
     destruir_paquete(siguiente_instruccion);
