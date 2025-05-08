@@ -7,12 +7,7 @@ uint32_t fd_interrupt;
 uint32_t fd_memoria;
 
 int main(int argc, char* argv[]){
-    if (argc != 2) {
-        log_debug(logger,"Uso: %s <ID_CPU>\n", argv[0]);
-        return EXIT_FAILURE;
-    }
     char* id_cpu = argv[1];
-
     char log_filename[64];
     sprintf(log_filename, "cpu-%s.log", id_cpu);
     logger = log_create(log_filename, "CPU", true, LOG_LEVEL_DEBUG);
@@ -168,7 +163,7 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
             log_debug(logger, "Instrucción EXIT");
             break;
         default:
-            log_error(logger, "Instrucción desconocida");
+            log_error(logger, "Instrucción desconocida ");
             break;
     }
 
