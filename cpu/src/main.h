@@ -6,6 +6,13 @@
 #include <pthread.h>
 #include <utils/config.h>
 #include <utils/log.h>
+#include <utils/estructuras.h>
 
-void handshake_memoria(t_config* config);
-void handshake_kernel(t_config* config);
+void handshake_memoria(void*);
+void handshake_kernel(void*);
+void recibir_proceso(void*);
+
+typedef struct {
+    char* id_cpu;
+    char* tipo_conexion;
+} t_handshake_args;
