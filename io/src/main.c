@@ -31,12 +31,7 @@ int main(int argc, char* argv[]) {
     }
     
     while (true) {
-        t_paquete* kernel_a_io = recibir_paquete(fd_kernel);
-        log_debug(logger, string_from_format("%i", kernel_a_io->codigo_operacion));
-        if (kernel_a_io->codigo_operacion != IO){
-            log_error(logger, "Codigo de operación invalido, IO solo puede recibir operaciones de tipo IO");
-            continue;
-        }
+        t_paquete* kernel_a_io = recibir_paquete(fd_kernel);        
 
         uint32_t pid = buffer_read_uint32(kernel_a_io->buffer);
         uint32_t tiempo_bloqueo = buffer_read_uint32(kernel_a_io->buffer);
@@ -54,8 +49,7 @@ int main(int argc, char* argv[]) {
         t_paquete* respuesta = crear_paquete(IO, buffer);
         enviar_paquete(respuesta, fd_kernel);
 
-        destruir_paquete(respuesta);
-        buffer_destroy(buffer);
+        log_info(logger, "Esperando proxima request.");
     }
     
 

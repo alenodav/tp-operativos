@@ -45,6 +45,17 @@ void escucha_io(t_config* config){
     }
     free(identificador);
     enviar_handshake(socket_io, "KERNEL");
+    
+    //test
+    t_buffer* buffer = buffer_create(sizeof(uint32_t)*2);
+    buffer_add_uint32(buffer, 1);
+    buffer_add_uint32(buffer, 1000000*5);
+    t_paquete* paquete = crear_paquete(IO, buffer);
+    enviar_paquete(paquete, socket_io);
+    recibir_paquete(socket_io);
+
+    getchar();
+
     liberar_conexion(socket_io);
     liberar_conexion(fd_escucha_io);
     return;
