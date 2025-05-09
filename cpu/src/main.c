@@ -7,12 +7,7 @@ uint32_t fd_interrupt;
 uint32_t fd_memoria;
 
 int main(int argc, char* argv[]){
-    if (argc != 2) {
-        log_debug(logger,"Uso: %s <ID_CPU>\n", argv[0]);
-        return EXIT_FAILURE;
-    }
     char* id_cpu = argv[1];
-
     char log_filename[64];
     sprintf(log_filename, "cpu-%s.log", id_cpu);
     logger = log_create(log_filename, "CPU", true, LOG_LEVEL_DEBUG);
@@ -117,8 +112,7 @@ void recibir_proceso(void* _){
 
         log_debug(logger, "Recibido PID: %d - PC: %d", paquete_proceso.pid, paquete_proceso.pc);
 
-
-        // le envio el pc y pid a memoria para que me devuelva la sig instruccion
+        // FETCH a memoria
         solicitar_instruccion(paquete_proceso.pid, paquete_proceso.pc);
 
         destruir_paquete(paquete);
@@ -130,48 +124,229 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
     buffer_add_uint32(buffer,pid);
     buffer_add_uint32(buffer,pc);
 
-    t_paquete* paquete = crear_paquete(SAVE_INSTRUCTIONS,buffer);
+    t_paquete* paquete = crear_paquete(FETCH,buffer);
     enviar_paquete(paquete,fd_memoria);
 
     buffer_destroy(buffer);
     destruir_paquete(paquete);
 
-    // recibo la sig instruccion
+    // recibo la siguiente instruccion de memoria
     t_paquete* siguiente_instruccion = recibir_paquete(fd_memoria);
-     
+    
+    // DECODE
     uint32_t instruccion_int = buffer_read_uint32(siguiente_instruccion->buffer);
     t_instruccion instruccion = (t_instruccion)instruccion_int;
 
     switch (instruccion) {
         case NOOP:
-            log_debug(logger, "Instrucción NOOP");
+           log_debug(logger, "PID: %d - EXECUTE - NOOP", pid);
+            usleep(1000);
+            log_debug(logger, "PID: %d - NOOP completado", pid);
             break;
-        case WRITE:
-            log_debug(logger, "Instrucción WRITE");
+        case WRITE: {
+            uint32_t direccion = buffer_read_uint32(siguiente_instruccion->buffer);
+            uint32_t length = buffer_read_uint32(siguiente_instruccion->buffer);
+            char* valor = buffer_read_string(siguiente_instruccion->buffer, &length);
+            log_debug(logger, "PID: %d - EXECUTE - WRITE - Direccion: %d, valor: %d", pid, direccion, valor);
+
+            t_buffer* buffer = buffer_create(sizeof(uint32_t)*2+length);
+            buffer_add_uint32(buffer,pid);
+            buffer_add_uint32(buffer,direccion);
+            buffer_add_string(buffer,length,valor);
+
+            t_paquete* paquete = crear_paquete(WRITE,buffer);
+            enviar_paquete(paquete,fd_memoria);
+
+            buffer_destroy(buffer);
+            destruir_paquete(paquete);
+            free(valor);
+
+            t_paquete* respuesta = recibir_paquete(fd_memoria);
+            uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
+            char* mensaje = buffer_read_string(respuesta->buffer,&length_respuesta);
+            
+            if(string_equals_ignore_case(mensaje, "OK")) {
+                log_debug(logger, "PID: %d - WRITE completado exitosamente", pid);
+            } else {
+                log_error(logger, "PID: %d - Error en WRITE: %s", pid, mensaje);
+            }
+            
+            free(mensaje);
+            destruir_paquete(respuesta);
             break;
-        case READ:
-            log_debug(logger, "Instrucción READ");
+        }
+        case READ: {
+            uint32_t direccion = buffer_read_uint32(siguiente_instruccion->buffer);
+            uint32_t tamanio = buffer_read_uint32(siguiente_instruccion->buffer);
+            log_debug(logger, "PID: %d - EXECUTE - READ - Direccion: %d, tamanio: %d", pid, direccion, tamanio);
+
+            t_buffer* buffer = buffer_create(sizeof(uint32_t)*3);
+            buffer_add_uint32(buffer,pid);
+            buffer_add_uint32(buffer,direccion);
+            buffer_add_uint32(buffer,tamanio);
+
+            t_paquete* paquete = crear_paquete(READ,buffer);
+            enviar_paquete(paquete,fd_memoria);
+
+            buffer_destroy(buffer);
+            destruir_paquete(paquete);
+    
+            t_paquete* respuesta = recibir_paquete(fd_memoria);
+            uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
+            char* valor_leido = buffer_read_string(respuesta->buffer, &length_respuesta);
+            
+            printf("PID: %d - READ - Valor leído: %s\n", pid, valor_leido);
+            log_debug(logger, "PID: %d - READ - Valor leído: %s", pid, valor_leido);
+            
+            free(valor_leido);
+            destruir_paquete(respuesta);
             break;
-        case GOTO:
-            log_debug(logger, "Instrucción GOTO");
+        }
+        case GOTO: {
+            uint32_t direccion = buffer_read_uint32(siguiente_instruccion->buffer);
+            log_debug(logger, "PID: %d - EXECUTE - GOTO - Nueva dirección: %d", pid, direccion);
+
+            t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2);
+            buffer_add_uint32(buffer, pid);
+            buffer_add_uint32(buffer, direccion);
+
+            t_paquete* paquete = crear_paquete(GOTO, buffer);
+            enviar_paquete(paquete, fd_memoria);
+
+            buffer_destroy(buffer);
+            destruir_paquete(paquete);
+
+            t_paquete* respuesta = recibir_paquete(fd_memoria);
+            uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
+            char* mensaje = buffer_read_string(respuesta->buffer, &length_respuesta);
+            
+            if(string_equals_ignore_case(mensaje, "OK")) {
+                log_debug(logger, "PID: %d - GOTO completado exitosamente", pid);
+            } else {
+                log_error(logger, "PID: %d - Error en GOTO: %s", pid, mensaje);
+            }
+            
+            free(mensaje);
+            destruir_paquete(respuesta);
             break;
-        case IO_SYSCALL:
-            log_debug(logger, "Instrucción IO_SYSCALL");
+        }
+        case IO_SYSCALL: {
+            uint32_t length = buffer_read_uint32(siguiente_instruccion->buffer);
+            char* dispositivo = buffer_read_string(siguiente_instruccion->buffer, &length);
+            uint32_t tiempo = buffer_read_uint32(siguiente_instruccion->buffer);
+            log_debug(logger, "PID: %d - EXECUTE - IO - Dispositivo: %s, Tiempo: %d",pid, dispositivo, tiempo);
+
+            t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2 + length);
+            buffer_add_uint32(buffer, pid);
+            buffer_add_string(buffer, length, dispositivo);
+            buffer_add_uint32(buffer, tiempo);
+
+            t_paquete* paquete = crear_paquete(IO, buffer);
+            enviar_paquete(paquete, fd_interrupt);
+
+            buffer_destroy(buffer);
+            destruir_paquete(paquete);
+            free(dispositivo);
             break;
-        case INIT_PROC:
-            log_debug(logger, "Instrucción INIT_PROC");
+        }
+        case INIT_PROC: {
+            uint32_t length = buffer_read_uint32(siguiente_instruccion->buffer);
+            char* nombre = buffer_read_string(siguiente_instruccion->buffer, &length);
+            uint32_t tamanio = buffer_read_uint32(siguiente_instruccion->buffer);
+            log_debug(logger, "PID: %d - EXECUTE - INIT_PROC - Nombre: %s, Tamaño: %d",pid, nombre, tamanio);
+
+            t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2 + length);
+            buffer_add_uint32(buffer, pid);
+            buffer_add_string(buffer, length, nombre);
+            buffer_add_uint32(buffer, tamanio);
+
+            t_paquete* paquete = crear_paquete(INIT_PROC, buffer);
+            enviar_paquete(paquete, fd_interrupt);
+
+            buffer_destroy(buffer);
+            destruir_paquete(paquete);
+            free(nombre);
             break;
-        case DUMP_MEMORY:
-            log_debug(logger, "Instrucción DUMP_MEMORY");
+        }
+        case DUMP_MEMORY: {
+            log_debug(logger, "PID: %d - EXECUTE - DUMP_MEMORY", pid);
+
+            t_buffer* buffer = buffer_create(sizeof(uint32_t));
+            buffer_add_uint32(buffer, pid);
+
+            t_paquete* paquete = crear_paquete(DUMP_MEMORY, buffer);
+            enviar_paquete(paquete, fd_interrupt);
+
+            buffer_destroy(buffer);
+            destruir_paquete(paquete);
             break;
-        case EXIT:
-            log_debug(logger, "Instrucción EXIT");
+        }
+        case EXIT: {
+            log_debug(logger, "PID: %d - EXECUTE - EXIT", pid);
+
+            t_buffer* buffer = buffer_create(sizeof(uint32_t));
+            buffer_add_uint32(buffer, pid);
+
+            t_paquete* paquete = crear_paquete(EXIT, buffer);
+            enviar_paquete(paquete, fd_interrupt);
+
+            buffer_destroy(buffer);
+            destruir_paquete(paquete);
             break;
+        }
         default:
-            log_error(logger, "Instrucción desconocida");
+            log_error(logger, "PID: %d - Instrucción desconocida", pid);
             break;
     }
 
+    // se incrementa el pc en 1 si no pasa por GOTO
+    if(instruccion != GOTO){
+        t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2);
+        buffer_add_uint32(buffer, pid);
+        buffer_add_uint32(buffer, pc + 1);
+
+        t_paquete* paquete = crear_paquete(GOTO, buffer);
+        enviar_paquete(paquete, fd_memoria);
+
+        buffer_destroy(buffer);
+        destruir_paquete(paquete);
+
+        t_paquete* respuesta = recibir_paquete(fd_memoria);
+        uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
+        char* mensaje = buffer_read_string(respuesta->buffer, &length_respuesta);
+        
+        if(!string_equals_ignore_case(mensaje, "OK")) {
+            log_error(logger, "PID: %d - Error al actualizar PC: %s", pid, mensaje);
+        }
+        
+        free(mensaje);
+        destruir_paquete(respuesta);
+    }
+
+    // Check interrupt del kernel
+    t_paquete* interrupcion = recibir_paquete(fd_interrupt);
+    if(interrupcion != NULL ){
+        uint32_t pid_interrupcion = buffer_read_uint32(interrupcion);
+
+        if(pid_interrupcion == pid){
+            log_debug(logger, "PID: %d - Interrupción recibida del kernel", pid);
+
+            t_buffer* buffer = buffer_create(sizeof(uint32_t)*2);
+            buffer_add_uint32(buffer,pid);
+            buffer_add_uint32(buffer,pc+1); // pc actualizado
+
+            t_paquete* respuesta = crear_paquete(INTERRUPT,buffer);
+            enviar_paquete(respuesta,fd_interrupt);
+
+            buffer_destroy(buffer);
+            destruir_paquete(respuesta);
+        } else {
+            log_debug(logger, "PID: %d - Interrupción descartada (para PID: %d)", pid, pid_interrupcion);
+        }
+        destruir_paquete(interrupcion);
+    }
 
     destruir_paquete(siguiente_instruccion);
+
+>>>>>>> DavidL
 }
