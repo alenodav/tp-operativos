@@ -347,6 +347,4 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
     }
 
     destruir_paquete(siguiente_instruccion);
-
->>>>>>> DavidL
 }
