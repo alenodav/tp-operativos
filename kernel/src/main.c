@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
     cpu_list = list_create();
     fd_escucha_io = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_IO"));  
     io_list = list_create();
-
+    io_queue_list = list_create();
     pthread_t administrador_cpu_dispatch;
     pthread_create(&administrador_cpu_dispatch, NULL, (void*)administrar_cpus_dispatch, NULL);
     pthread_detach(administrador_cpu_dispatch);
@@ -152,7 +152,8 @@ void planificar_fifo_largo_plazo() {
         bool consulta_memoria = consultar_a_memoria();
         if (consulta_memoria) {
             enviar_instrucciones();
-            pasar_ready();
+            list_remove(cola_new, 0);
+            pasar_ready(pcb, list_get(pcb->metricas, NEW));
         }
         else {
             log_debug(logger, "## (%d) No hay espacio suficiente para inicializar el proceso", pcb->pid);
@@ -225,13 +226,13 @@ t_buffer *serializar_kernel_to_memoria(kernel_to_memoria* archivo) {
     return buffer;
 }
 
-void pasar_ready() {
-    t_pcb *pcb = list_remove(cola_new, 0);
-    t_estado_metricas *metricas_new = list_get(pcb->metricas, 0);
-    temporal_stop(metricas_new->MT);
+void pasar_ready(t_pcb *pcb, t_estado_metricas* metricas) {
+    temporal_stop(metricas->MT);
     pcb->estado_actual = READY;
-    t_estado_metricas *ready = crear_metrica_estado(READY);
-    list_add(pcb->metricas, ready);
+    if (metricas->estado == NEW) {
+        t_estado_metricas *ready = crear_metrica_estado(READY);
+        list_add(pcb->metricas, ready);
+    }
     list_add(cola_ready, pcb);
 }
 
@@ -420,8 +421,115 @@ void agregar_io (uint32_t *socket) {
     io_agregar->estado = false;
     io_agregar->socket = *socket;
     io_agregar->proceso_ejecucion = -1;
-    io_agregar->cola_procesos = queue_create();
+    if (io_queue_find_by_id(identificador) == NULL) {
+        t_io_queue *io_queue_agregar = malloc(sizeof(t_io_queue));
+        io_queue_agregar->id = identificador;
+        io_queue_agregar->cola_procesos = queue_create();
+        sem_wait(sem_io);
+        list_add(io_queue_list, io_queue_agregar);
+        sem_post(sem_io);
+    }
     sem_wait(sem_io);
     list_add(io_list, io_agregar);
     sem_post(sem_io);
+}
+
+void ejecutar_io_syscall (uint32_t pid, char* id_io, uint32_t tiempo) {
+    t_list *io_buscada = io_filter_by_id(id_io);
+    if (list_size(io_buscada) < 1) {
+        terminar_proceso(pid);
+        return;
+    }
+    t_pcb *proceso = pcb_by_pid(cola_exec, pid);
+    t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
+    temporal_stop(metricas_exec->MT);
+    proceso->estado_actual = BLOCKED;
+    t_estado_metricas *blocked = crear_metrica_estado(BLOCKED);
+    list_add(proceso->metricas, blocked);
+    list_add(cola_blocked, proceso);
+    kernel_to_io *io_enviar = malloc(sizeof(io_enviar));
+    io_enviar->pid = pid;
+    io_enviar->tiempo_bloqueo = tiempo;
+    t_io_queue *io_queue_buscada = io_queue_find_by_id(id_io);
+    sem_wait(sem_io);
+    queue_push(io_queue_buscada->cola_procesos, io_enviar);
+    sem_post(sem_io);
+    enviar_kernel_to_io(id_io);
+}
+
+void enviar_kernel_to_io (char* id) {
+    t_list *io_buscada = io_filter_by_id(id);
+    t_io *io_a_enviar = list_find(io_buscada, io_liberada);
+    if (io_a_enviar == NULL) {
+        return;
+    }
+    t_io_queue *io_queue_buscada = io_queue_find_by_id(id);
+    sem_wait(sem_io);
+    kernel_to_io *params = queue_pop(io_queue_buscada->cola_procesos);
+    sem_post(sem_io);
+    io_a_enviar->estado = true;
+    io_a_enviar->proceso_ejecucion = params->pid;
+    t_buffer *buffer = serializar_kernel_to_io(params);
+    t_paquete *paquete = crear_paquete(IO, buffer);
+    enviar_paquete(paquete, io_a_enviar->socket);
+    pthread_t hilo_respuesta;
+    pthread_create(&hilo_respuesta, NULL, (void*)manejar_respuesta_io, io_a_enviar);
+    pthread_detach(hilo_respuesta); 
+}
+
+void manejar_respuesta_io(t_io *io_espera) {
+    t_paquete *paquete = recibir_paquete(io_espera->socket);
+    if (paquete->codigo_operacion != IO) {
+        log_error(logger, "(%d) Codigo de operacion incorrecto para IO", io_espera->proceso_ejecucion);
+        terminar_proceso(io_espera->proceso_ejecucion);
+        sem_wait(sem_io);
+        list_remove_element(io_list, io_espera);
+        sem_post(sem_io);
+        liberar_conexion(io_espera->socket);
+        free(io_espera->identificador);
+        free(io_espera);
+        destruir_paquete(paquete);
+        return;
+    }
+    t_pcb *pcb = pcb_by_pid(cola_blocked, io_espera->proceso_ejecucion);
+    pasar_ready(pcb, list_get(pcb->metricas, BLOCKED));
+    io_espera->estado = false;
+    io_espera->proceso_ejecucion = -1;
+    t_io_queue *cola_io = io_queue_find_by_id(io_espera->identificador);
+    if (!queue_is_empty(cola_io->cola_procesos)) {
+        enviar_kernel_to_io(io_espera->identificador);
+    }
+    return;
+}
+
+t_list *io_filter_by_id (char *id) {
+    t_list *io_ret = malloc(sizeof(t_io));
+    bool id_equals(void *io) {
+        t_io *io_cast = (t_io*)io;
+        return string_equals_ignore_case(io_cast->identificador, id);
+    }   
+    io_ret = list_filter(io_list, id_equals);
+    return io_ret;
+}
+
+t_io_queue *io_queue_find_by_id (char *id) {
+    t_io_queue *io_ret = malloc(sizeof(t_io_queue));
+    bool id_equals(void *io) {
+        t_io_queue *io_cast = (t_io_queue*)io_cast;
+        return string_equals_ignore_case(io_cast->id, id);
+    }   
+    io_ret = list_find(io_queue_list, id_equals);
+    return io_ret;
+}
+
+bool io_liberada(void* io) {
+    t_io *io_cast = (t_io*) io;
+    return !(io_cast->estado);
+}
+
+t_buffer *serializar_kernel_to_io (kernel_to_io* data) {
+    t_buffer *buffer = buffer_create(sizeof(uint32_t) * 2);
+    buffer_add_uint32(buffer, data->pid);
+    buffer_add_uint32(buffer, data->tiempo_bloqueo);
+    return buffer;
 }
