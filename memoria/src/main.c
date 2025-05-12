@@ -1,8 +1,8 @@
 #include <main.h>
 
 t_log *logger;
-t_list* instrucciones;
-t_memoria tmemoria;
+t_list* lista_instrucciones;
+t_dictionary* diccionario_procesos;
 
 int main(int argc, char* argv[]) {
     t_config *config = crear_config("memoria");
@@ -11,10 +11,12 @@ int main(int argc, char* argv[]) {
 
     uint32_t fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
 
+    //Thread para CPU;
     pthread_t thread_escucha_cpu;
     pthread_create(&thread_escucha_cpu, NULL, handshake_cpu, fd_escucha_memoria);
     pthread_detach(thread_escucha_cpu);
    
+    //Thread para atender a Kernel
     pthread_t thread_escucha_kernel;
     pthread_create(&thread_escucha_kernel, NULL, handshake_kernel, fd_escucha_memoria);
     pthread_detach(thread_escucha_kernel);
@@ -70,9 +72,13 @@ void handshake_cpu(uint32_t fd_escucha_memoria) {
     return;
 }
 
-/*esta funcion lo que hace es que recibe de kernel, pid y tamaño y devuelve si hay tamaño o no para que kernel me envie la estructura
-con las instrucciones. */
-void recibir_consulta_memoria(uint32_t fd_kernel){
+/*
+Esta funcion lo que hace es que recibe de kernel, pid y tamaño y devuelve si hay tamaño o no para que kernel me envie la estructura
+con las instrucciones.  
+esta es la primera funcion a ejecutar para que kernel me envie las instrucciones completas. si hay tamanio le mando true y me envia
+las instrucciones
+*/
+bool recibir_consulta_memoria(uint32_t fd_kernel){
     t_paquete* paquete = recibir_paquete(fd_kernel);
 
     if(paquete->codigo_operacion != CONSULTA_MEMORIA_PROCESO){
@@ -98,8 +104,11 @@ void recibir_consulta_memoria(uint32_t fd_kernel){
     destruir_paquete(paquete);
     destruir_paquete(respuesta);
 
+    return hay_espacio;
+
 }
 
+//aca uso deserializar() para guardarme en una estructura las instrucciones, y despues las cargo en una lista, con cargar_instrucciones
 void recibir_instrucciones(uint32_t fd_kernel, uint32_t pid){
     t_paquete* paquete = recibir_paquete(fd_kernel);
 
@@ -108,85 +117,116 @@ void recibir_instrucciones(uint32_t fd_kernel, uint32_t pid){
         return;
     }
 
-    kernel_to_memoria* kernelToMemoria = deserializar_kernel_to_memoria(paquete->buffer);
+    kernel_to_memoria* kernelToMemoria = deserializar_kernel_to_memoria(paquete->buffer); // <<1>>
 
-    log_info(logger, "Recibo archivo con instrucciones para PID %d", pid);
+    log_info(logger, "Recibo archivo con instrucciones para PID %d", kernelToMemoria->pid);
 
-    cargar_instruciones(kernelToMemoria->archivo);
+    cargar_instrucciones(kernelToMemoria->archivo, kernelToMemoria->pid); // <<2>>
 
     free(kernelToMemoria->archivo);
     free(kernelToMemoria);
     destruir_paquete(paquete);
-
-
 }
 
-/* esta funcion tiene que ser distinta porque el tamaño de ña memoria tiene que ir cambiando a medida que entran y salen nuevos procesos de memoria
-para esta ocasion y para hacerlo de manera simplificada lo modelo de manera tal
-para que si el tamaño es menor al de la memoria, hay espacio, devuelve true y kernel puede enviar las instrucciones */
+/*
+    Funcion simplificada para uso practico de checkpoint 2.
+*/
 bool verificar_espacio_memoria(uint32_t pid, uint32_t tamanio){
-    uint32_t tamanio_memoria_default = 4096; //esta la tengo que leer del archivo de configuracion
+    uint32_t tamanio_memoria_default = 4096; //esta constante la tengo que leer del archivo de configuracion
     return tamanio_memoria_default > tamanio;
-
 }
 
-// <<1>> -- Recibo la estructura kernel_to_memoria de kernel serializada, con esta funcion la deserializo y la guardo en
-//la estructura kernel_to_memoria de memoria. --
+/*
+    <<1>> Recibo la estructura kernel_to_memoria de kernel serializada, con esta funcion la deserializo y la guardo en
+    la estructura kernel_to_memoria de memoria. --
+*/
 kernel_to_memoria* deserializar_kernel_to_memoria(t_buffer* buffer) {
     kernel_to_memoria* data = malloc(sizeof(kernel_to_memoria));
 
     // Leo la longitud del archivo
     data->archivo_length = buffer_read_uint32(buffer);
-
     // Leo el archivo 
     data->archivo = buffer_read_string(buffer, &data->archivo_length);
-
     // Leo el tamaño del proceso
     data->tamanio = buffer_read_uint32(buffer);
-
     return data;
 }
 
+memoria_to_cpu* parsear_linea(char *linea){
+    char** token = string_split(linea, " ");
 
-//<<2>> -- El archivo que viene en el struct kernel_to_memoria, lo tengo que leer para guardar las instrucciones en una lista --
-void cargar_instrucciones(char* path) {
-    FILE* archivo = fopen(path, "r");
+    memoria_to_cpu* struct_memoria_to_cpu = malloc(sizeof(memoria_to_cpu));
+    struct_memoria_to_cpu->argumentos = NULL;
+
+    if(string_equals_ignore_case(token[0], "READ")) {
+        struct_memoria_to_cpu->instruccion = READ;
+    } else if (string_equals_ignore_case(token[0], "WRITE")) {
+        struct_memoria_to_cpu->instruccion = WRITE;
+    } else if (string_equals_ignore_case(token[0], "GOTO")) {
+        struct_memoria_to_cpu->instruccion = GOTO;
+    } else if (string_equals_ignore_case(token[0], "NOOP")) {
+        struct_memoria_to_cpu->instruccion = NOOP;
+    } else if (string_equals_ignore_case(token[0], "EXIT")) {
+        struct_memoria_to_cpu->instruccion = EXIT;
+    } else {
+        // Manejo de error
+        log_error(logger, "Instrucción desconocida: %s\n", token[0]); 
+    }
+
+    //Como se separaron los demas tokens, los que quedaron son los parametros, entonces los uno en un nuevo string.
+    if (token[1] != NULL) {
+        struct_memoria_to_cpu->argumentos = string_new();
+        for (int i = 1; token[i] != NULL; i++) {
+            string_append_with_format(&struct_memoria_to_cpu->argumentos, "%s%s", token[i], token[i+1] ? " " : "");
+        }
+    } else {
+        struct_memoria_to_cpu->argumentos = string_duplicate(""); // vacío
+    }
+
+    string_iterate_lines(token, free);
+    free(token);
+
+    return struct_memoria_to_cpu;
+    
+}
+
+//esta funcion abre el archivo, usa parsear_linea(), guarda todo en una lista del tipo memoria_to_cpu y guarda en el diccionario.
+void cargar_instrucciones(char* path_archivo, uint32_t pid){
+    
+    FILE* archivo = fopen(path_archivo, "r");
     if (!archivo) {
-        log_error(logger, "No se pudo abrir el archivo: %s", archivo);
+        perror("No se pudo abrir el archivo de instrucciones");
         return;
     }
 
-    instrucciones = list_create(); 
+    lista_instrucciones = list_create();
     char* linea = NULL;
     size_t len = 0;
 
     while (getline(&linea, &len, archivo) != -1) {
-        linea[strcspn(linea, "\n")] = 0;
+        string_trim(&linea);
+        if (string_is_empty(linea)) continue;
 
-        t_instruccion* nueva_instruccion = malloc(sizeof(t_instruccion));
-        if (strcmp(linea, "NOOP") == 0) *nueva_instruccion = NOOP;
-        else if (strcmp(linea, "READ") == 0) *nueva_instruccion = READ;
-        else if (strcmp(linea, "WRITE") == 0) *nueva_instruccion = WRITE;
-        else if (strcmp(linea, "GOTO") == 0) *nueva_instruccion = GOTO;
-        else if (strcmp(linea, "IO") == 0) *nueva_instruccion = IO_SYSCALL;
-        else if (strcmp(linea, "INIT_PROC") == 0) *nueva_instruccion = INIT_PROC;
-        else if (strcmp(linea, "DUMP") == 0) *nueva_instruccion = DUMP_MEMORY;
-        else if (strcmp(linea, "EXIT") == 0) *nueva_instruccion = EXIT;
-        else {
-            log_warning(logger, "Instrucción desconocida: %s", linea);
-            free(nueva_instruccion);
-            continue;
-        }
-
-        list_add(instrucciones, nueva_instruccion);
+        memoria_to_cpu* instruccion = parsear_linea(linea);
+        list_add(lista_instrucciones, instruccion);
     }
 
     free(linea);
     fclose(archivo);
+
+    char* pid_str = string_itoa(pid);
+    dictionary_put(diccionario_procesos, pid_str, lista_instrucciones);
+    free(pid_str);
 }
 
-void leer_configuracion(char* config){
+/* void leer_configuracion(char* config){
     
-}
+} */
 
+//nota: decile a tomas que me mande el pid cuando me manda tambien el archivo en la funcion recibir_instrucciones, porque despues yo lo uso
+//para mandarlo al diccionario de una.
 
+//o segunda opcion, declarar una estructura kernel_to_memoria y de ahi voy sacando los atributos para usar en el diccionario. 
+//no si tiene sentido eso.¿?
+
+//faltaria que en los hilos empiece a llamar a las funciones y eso.
