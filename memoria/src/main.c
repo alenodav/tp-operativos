@@ -96,9 +96,9 @@ bool recibir_consulta_memoria(uint32_t fd_kernel){
 
     bool hay_espacio = verificar_espacio_memoria(pid, tamanio);
 
-    //preparo el paquete de respuesta--                          --creo buffer y le asigno tamaño del bool  que devuelve verificar_espacio_memoria 
-    t_paquete* respuesta = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer_create(sizeof(uint8_t)));
-    buffer_add_uint8(respuesta, hay_espacio);
+    //preparo el paquete de respuesta--           --creo buffer y le asigno tamaño del bool  que devuelve verificar_espacio_memoria 
+    t_paquete* respuesta = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer_create(sizeof(bool)));
+    buffer_add_bool(respuesta->buffer, hay_espacio);
     enviar_paquete(respuesta, fd_kernel);
 
     destruir_paquete(paquete);
@@ -219,11 +219,35 @@ void cargar_instrucciones(char* path_archivo, uint32_t pid){
     free(pid_str);
 }
 
+void enviar_instruccion(uint32_t fd_cpu){
+    t_buffer* buffer = recibir_paquete(fd_cpu);
+    uint32_t pid = buffer_read_uint32(buffer);
+    uint32_t pc = buffer_read_uint32(buffer);
+
+    t_list* lista_instruccion_to_cpu = dictionary_get(diccionario_procesos, string_itoa(pid));
+    if (lista_instruccion_to_cpu == NULL || pc >= list_size(lista_instruccion_to_cpu)) {
+        log_error(logger, "PID no encontrado o PC no valido");
+        return;
+    }
+
+    memoria_to_cpu* instruccion = list_get(lista_instruccion_to_cpu, pc);
+
+    t_paquete* paquete = crear_paquete(ENVIAR_INSTRUCCION, buffer_create(0)); //que codigo de operacion utilizo aca?
+    buffer_add_uint8(paquete->buffer, instruccion->instruccion); 
+    buffer_add_string(paquete->buffer, instruccion->parametros); 
+
+    enviar_paquete(paquete, fd_cpu);
+
+    eliminar_paquete(paquete);
+    buffer_destroy(buffer);
+    
+}
+
 /* void leer_configuracion(char* config){
     
 } */
 
-//nota: decile a tomas que me mande el pid cuando me manda tambien el archivo en la funcion recibir_instrucciones, porque despues yo lo uso
+//nota: decirle a tomas que me mande el pid cuando me manda tambien el archivo en la funcion recibir_instrucciones, porque despues yo lo uso
 //para mandarlo al diccionario de una.
 
 //o segunda opcion, declarar una estructura kernel_to_memoria y de ahi voy sacando los atributos para usar en el diccionario. 
