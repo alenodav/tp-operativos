@@ -214,7 +214,7 @@ memoria_to_cpu* parsear_linea(char *linea){
     char** token = string_split(linea, " ");
 
     memoria_to_cpu* struct_memoria_to_cpu = malloc(sizeof(memoria_to_cpu));
-    struct_memoria_to_cpu->argumentos = NULL;
+    struct_memoria_to_cpu->parametros = NULL;
 
     if(string_equals_ignore_case(token[0], "READ")) {
         struct_memoria_to_cpu->instruccion = READ;
@@ -231,12 +231,12 @@ memoria_to_cpu* parsear_linea(char *linea){
     }
 
     if (token[1] != NULL) {
-        struct_memoria_to_cpu->argumentos = string_new();
+        struct_memoria_to_cpu->parametros = string_new();
         for (int i = 1; token[i] != NULL; i++) {
-            string_append_with_format(&struct_memoria_to_cpu->argumentos, "%s%s", token[i], token[i+1] ? " " : "");
+            string_append_with_format(&struct_memoria_to_cpu->parametros, "%s%s", token[i], token[i+1] ? " " : "");
         }
     } else {
-        struct_memoria_to_cpu->argumentos = string_duplicate("");
+        struct_memoria_to_cpu->parametros = string_duplicate("");
     }
 
     string_iterate_lines(token, free);
@@ -289,11 +289,11 @@ bool enviar_instruccion(uint32_t fd_cpu){
 
     memoria_to_cpu* instruccion = list_get(lista_instruccion_to_cpu, pc);
 
-    uint32_t tam_argumentos = string_length(instruccion->argumentos);
+    uint32_t tam_para = string_length(instruccion->para);
 
     t_paquete* paquete = crear_paquete(FETCH, buffer_create(0));
     buffer_add_uint8(paquete->buffer, instruccion->instruccion); 
-    buffer_add_string(paquete->buffer, tam_argumentos, instruccion->argumentos); 
+    buffer_add_string(paquete->buffer, tam_para, instruccion->para); 
 
     enviar_paquete(paquete, fd_cpu);
 
