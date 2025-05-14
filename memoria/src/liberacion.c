@@ -4,10 +4,10 @@ void liberar_lista_instrucciones(t_list* lista) {
     if(lista == NULL) return;
 
     for(int i = 0; i < list_size(lista); i++) {
-        memoria_to_cpu* instruccion = list_get(lista, i);
+        struct_memoria_to_cpu* instruccion = list_get(lista, i);
         if(instruccion != NULL) {
-            if(instruccion->argumentos != NULL) {
-                free(instruccion->argumentos);
+            if(instruccion->parametros != NULL) {
+                free(instruccion->parametros);
             }
             free(instruccion);
         }

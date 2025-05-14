@@ -38,7 +38,7 @@ void recibir_instrucciones(uint32_t, uint32_t);
 bool verificar_espacio_memoria(uint32_t, uint32_t);
 kernel_to_memoria* deserializar_kernel_to_memoria(t_buffer*);
 void cargar_instrucciones(char*, uint32_t pid_t);
-memoria_to_cpu* parsear_linea(char* linea);
+struct_memoria_to_cpu* parsear_linea(char* linea);
 bool enviar_instruccion(uint32_t fd_cpu);
 void liberar_lista_instrucciones(t_list* lista);
 void liberar_diccionario();
