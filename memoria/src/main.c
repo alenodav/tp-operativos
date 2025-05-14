@@ -232,13 +232,15 @@ void enviar_instruccion(uint32_t fd_cpu){
 
     memoria_to_cpu* instruccion = list_get(lista_instruccion_to_cpu, pc);
 
+    char * tam_argumentos = string_length(instruccion->argumentos);
+
     t_paquete* paquete = crear_paquete(ENVIAR_INSTRUCCION, buffer_create(0)); //que codigo de operacion utilizo aca?
     buffer_add_uint8(paquete->buffer, instruccion->instruccion); 
-    buffer_add_string(paquete->buffer, instruccion->parametros); 
+    buffer_add_string(paquete->buffer,tam_argumentos, instruccion->argumentos); 
 
     enviar_paquete(paquete, fd_cpu);
 
-    eliminar_paquete(paquete);
+    destruir_paquete(paquete);
     buffer_destroy(buffer);
     
 }
