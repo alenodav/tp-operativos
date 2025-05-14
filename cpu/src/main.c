@@ -113,30 +113,29 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
     // recibo la siguiente instruccion de memoria
     t_paquete* siguiente_instruccion = recibir_paquete(fd_memoria);
     
-    t_syscall syscall;
-    syscall.syscall = buffer_read_uint32(siguiente_instruccion->buffer);
-    syscall.parametros = NULL;
-    syscall.parametros_length = buffer_read_uint32(siguiente_instruccion->buffer);
-    syscall.pid = buffer_read_uint32(siguiente_instruccion->buffer);
-    
-    if(syscall.parametros_length > 0) {
-        syscall.parametros = malloc(syscall.parametros_length);
-        buffer_read(siguiente_instruccion->buffer, syscall.parametros, syscall.parametros_length);
-    }
+    memoria_to_cpu instruccion_recibida;
+    instruccion_recibida.instruccion = buffer_read_uint32(siguiente_instruccion->buffer);
+    uint32_t length_parametros = buffer_read_uint32(siguiente_instruccion->buffer);
+    instruccion_recibida.parametros = malloc(length_parametros + 1);
+    buffer_read(siguiente_instruccion->buffer, instruccion_recibida.parametros, length_parametros);
+    instruccion_recibida.parametros[length_parametros] = '\0';
 
-    switch (syscall.syscall) {
+    switch (instruccion_recibida.instruccion) {
         case NOOP:
             log_debug(logger, "PID: %d - EXECUTE - NOOP", pid);
             break;
         case WRITE: {
-            // DECODE
-            cpu_write* write_params = (cpu_write*)syscall.parametros;
+            char** parametros = string_split(instruccion_recibida.parametros, " ");
+            uint32_t direccion = atoi(parametros[0]);
+            char* valor = parametros[1];
             
-            // EXECUTE
-            log_debug(logger, "PID: %d - EXECUTE - WRITE - Dirección: %d, Valor: %s", pid, write_params->direccion, write_params->datos);
+            log_debug(logger, "PID: %d - EXECUTE - WRITE - Dirección: %d, Valor: %s", pid, direccion, valor);
 
             t_buffer* buffer = buffer_create(sizeof(cpu_write));
-            buffer_add(buffer, write_params, sizeof(cpu_write));
+            cpu_write write_params;
+            write_params.direccion = direccion;
+            write_params.datos = valor;
+            buffer_add(buffer, &write_params, sizeof(cpu_write));
 
             t_paquete* paquete = crear_paquete(WRITE, buffer);
             enviar_paquete(paquete, fd_memoria);
@@ -156,17 +155,22 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
             
             free(mensaje);
             destruir_paquete(respuesta);
+            string_iterate_lines(parametros, (void*)free);
+            free(parametros);
             break;
         }
         case READ: {
-            // DECODE
-            cpu_read* read_params = (cpu_read*)syscall.parametros;
+            char** parametros = string_split(instruccion_recibida.parametros, " ");
+            uint32_t direccion = atoi(parametros[0]);
+            uint32_t tamanio = atoi(parametros[1]);
             
-            // EXECUTE
-            log_debug(logger, "PID: %d - EXECUTE - READ - Dirección: %d, Tamaño: %d", pid, read_params->direccion, read_params->tamanio);            
+            log_debug(logger, "PID: %d - EXECUTE - READ - Dirección: %d, Tamaño: %d", pid, direccion, tamanio);            
             
             t_buffer* buffer = buffer_create(sizeof(cpu_read));
-            buffer_add(buffer, read_params, sizeof(cpu_read));
+            cpu_read read_params;
+            read_params.direccion = direccion;
+            read_params.tamanio = tamanio;
+            buffer_add(buffer, &read_params, sizeof(cpu_read));
 
             t_paquete* paquete = crear_paquete(READ,buffer);
             enviar_paquete(paquete,fd_memoria);
@@ -183,11 +187,12 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
             
             free(valor_leido);
             destruir_paquete(respuesta);
+            string_iterate_lines(parametros, (void*)free);
+            free(parametros);
             break;
         }
         case GOTO: {
-            // DECODE
-            uint32_t nueva_direccion = *(uint32_t*)syscall.parametros;
+            uint32_t nueva_direccion = atoi(instruccion_recibida.parametros);
 
             log_debug(logger, "PID: %d - EXECUTE - GOTO - Nueva dirección: %d", pid, nueva_direccion);
 
@@ -215,32 +220,46 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
             break;
         }
         case IO_SYSCALL: {
-            io_parameters* io_params = (io_parameters*)syscall.parametros; 
-            log_debug(logger, "PID: %d - EXECUTE - IO - Dispositivo: %s, Tiempo: %d",pid, io_params->identificador, io_params->tiempo_bloqueo);
+            char** parametros = string_split(instruccion_recibida.parametros, " ");
+            char* dispositivo = parametros[0];
+            uint32_t tiempo = atoi(parametros[1]);
+            log_debug(logger, "PID: %d - EXECUTE - IO - Dispositivo: %s, Tiempo: %d",pid, dispositivo, tiempo);
 
             t_buffer* buffer = buffer_create(sizeof(io_parameters));
-            buffer_add(buffer, io_params, sizeof(io_parameters));
+            io_parameters io_params;
+            io_params.identificador = dispositivo;
+            io_params.tiempo_bloqueo = tiempo;
+            buffer_add(buffer, &io_params, sizeof(io_parameters));
 
             t_paquete* paquete = crear_paquete(IO, buffer);
             enviar_paquete(paquete, fd_interrupt);
 
             buffer_destroy(buffer);
             destruir_paquete(paquete);
+            string_iterate_lines(parametros, (void*)free);
+            free(parametros);
             break;
         }
         case INIT_PROC: {
-            init_proc_parameters* init_params = (init_proc_parameters*)syscall.parametros;
+            char** parametros = string_split(instruccion_recibida.parametros, " ");
+            char* archivo = parametros[0];
+            uint32_t tamanio = atoi(parametros[1]);
 
-            log_debug(logger, "PID: %d - EXECUTE - INIT_PROC - Nombre: %s, Tamaño: %d",pid, init_params->archivo, init_params->archivo_lenght);
+            log_debug(logger, "PID: %d - EXECUTE - INIT_PROC - Nombre: %s, Tamaño: %d",pid, archivo, tamanio);
 
             t_buffer* buffer = buffer_create(sizeof(init_proc_parameters));
-            buffer_add(buffer, init_params, sizeof(init_proc_parameters));
+            init_proc_parameters init_params;
+            init_params.archivo = archivo;
+            init_params.tamanio_proceso = tamanio;
+            buffer_add(buffer, &init_params, sizeof(init_proc_parameters));
 
             t_paquete* paquete = crear_paquete(INIT_PROC, buffer);
             enviar_paquete(paquete, fd_interrupt);
 
             buffer_destroy(buffer);
             destruir_paquete(paquete);
+            string_iterate_lines(parametros, (void*)free);
+            free(parametros);
             break;
         }
         case DUMP_MEMORY: {
@@ -273,13 +292,13 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
             log_error(logger, "PID: %d - Instrucción desconocida", pid);
             break;
     }
-    if(syscall.syscall != GOTO) {
+    
+    free(instruccion_recibida.parametros);
+    destruir_paquete(siguiente_instruccion);
+
+    if(instruccion_recibida.instruccion != GOTO) {
         pc++;
     }
-    if(syscall.parametros != NULL) {
-        free(syscall.parametros);
-    }
-    destruir_paquete(siguiente_instruccion);
     
     // Check Interrupt de kernel
     t_paquete* interrupcion = recibir_paquete(fd_interrupt);
