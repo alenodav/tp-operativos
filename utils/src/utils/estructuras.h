@@ -74,6 +74,5 @@ typedef struct {
 
 typedef struct {
     t_instruccion instruccion;
-    char* argumentos;
+    char* parametros;
 } memoria_to_cpu;
-
