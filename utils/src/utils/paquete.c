@@ -41,13 +41,13 @@ t_paquete *recibir_paquete(uint32_t socket) {
     // Primero recibimos el codigo de operacion
     paquete->codigo_operacion = recibir_operacion(socket);
     // Después ya podemos recibir el buffer. Primero su tamaño seguido del contenido
-    err = recv(socket, &(paquete->buffer->size), sizeof(uint32_t), MSG_WAITALL);
+    err = recv(socket, &(paquete->buffer->size), sizeof(uint32_t), 0);
     if(err == -1) {
         log_error(logger, "Error al recibir tamaño de buffer: %s", strerror(errno));
         abort();
     }
     paquete->buffer->stream = malloc(paquete->buffer->size);
-    err = recv(socket, paquete->buffer->stream, paquete->buffer->size, MSG_WAITALL);
+    err = recv(socket, paquete->buffer->stream, paquete->buffer->size, 0);
     if(err == -1) {
         log_error(logger, "Error al recibir buffer: %s", strerror(errno));
         abort();
