@@ -1,13 +1,19 @@
 #include <main.h>
+#include "liberacion.h"
 
 t_log *logger;
-t_list* lista_instrucciones;
 t_dictionary* diccionario_procesos;
+pthread_mutex_t mutex_diccionario;
 
 int main(int argc, char* argv[]) {
     t_config *config = crear_config("memoria");
     logger = crear_log(config, "memoria");
     log_debug(logger, "Config y Logger creados correctamente.");
+
+    // Inicializo diccionario de procesos y su mutex
+    diccionario_procesos = dictionary_create();
+    pthread_mutex_init(&mutex_diccionario, NULL);
+    log_debug(logger, "Diccionario de procesos creado correctamente.");
 
     uint32_t fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
 
@@ -25,9 +31,12 @@ int main(int argc, char* argv[]) {
 
     liberar_conexion(fd_escucha_memoria);
     config_destroy(config);
+    liberar_diccionario(diccionario_procesos);
+    pthread_mutex_destroy(&mutex_diccionario);
     log_info(logger, "Finalizo el proceso.");
     log_destroy(logger);
 
+    return 0;
 }
 
 void handshake_kernel(uint32_t fd_escucha_memoria) {
@@ -40,14 +49,41 @@ void handshake_kernel(uint32_t fd_escucha_memoria) {
     }
     else {
         log_error(logger, "Handshake Kernel a Memoria error.");
+        free(identificador);
+        liberar_conexion(cliente);
+        return;
     }
 
     free(identificador);
-
     enviar_handshake(cliente, "MEMORIA");
 
+    // Loop para atender Kernel 
+    while(1) {
+        t_paquete* paquete = recibir_paquete(cliente);
+        if(paquete == NULL) {
+            log_error(logger, "Error al recibir paquete de Kernel");
+            break;
+        }
+        
+        switch(paquete->codigo_operacion) {
+            case CONSULTA_MEMORIA_PROCESO:
+                if(recibir_consulta_memoria(cliente)) {
+                    // Si hay espacio, esperar las instrucciones
+                    recibir_instrucciones(cliente, 0); // verificar si el pid viene en la estructura
+                }
+                break;
+            case TERMINAR_PROCESO:
+                break;
+            default:
+                log_error(logger, "Operación desconocida de Kernel");
+                break;
+        }
+        
+        destruir_paquete(paquete);
+    }
+
+    log_info(logger, "Finalizando conexión con Kernel");
     liberar_conexion(cliente);
-    
     return;
 }
 
@@ -61,29 +97,56 @@ void handshake_cpu(uint32_t fd_escucha_memoria) {
     }
     else {
         log_error(logger, "Handshake CPU a Memoria error.");
+        free(identificador);
+        liberar_conexion(cliente);
+        return;
     }
 
     free(identificador);
-
     enviar_handshake(cliente, "MEMORIA");
 
+    bool proceso_terminado = false;
+    // Loop para atender peticiones de CPU
+    while(!proceso_terminado) {
+        t_paquete* paquete = recibir_paquete(cliente);
+        if(paquete == NULL) {
+            log_error(logger, "Error al recibir paquete de CPU");
+            break;
+        }
+        
+        switch(paquete->codigo_operacion) {
+            case FETCH:
+                // CPU pide una instrucción
+                proceso_terminado = enviar_instruccion(cliente);
+                if(proceso_terminado) {
+                    log_info(logger, "Proceso terminado - instrucción EXIT enviada");
+                }
+                break;
+            case READ:
+                // TODO: Implementar lectura de memoria
+                break;
+            case WRITE:
+                // TODO: Implementar escritura en memoria
+                break;
+            default:
+                log_error(logger, "Operación desconocida de CPU");
+                break;
+        }
+        
+        destruir_paquete(paquete);
+    }
+
+    log_info(logger, "Finalizando conexión con CPU");
     liberar_conexion(cliente);
-    
     return;
 }
 
-/*
-Esta funcion lo que hace es que recibe de kernel, pid y tamaño y devuelve si hay tamaño o no para que kernel me envie la estructura
-con las instrucciones.  
-esta es la primera funcion a ejecutar para que kernel me envie las instrucciones completas. si hay tamanio le mando true y me envia
-las instrucciones
-*/
 bool recibir_consulta_memoria(uint32_t fd_kernel){
     t_paquete* paquete = recibir_paquete(fd_kernel);
 
     if(paquete->codigo_operacion != CONSULTA_MEMORIA_PROCESO){
         log_error(logger, "Codigo de operacion incorrecto");
-        return;
+        return false;
     }
 
     //creo buffer para leer el paquete con pid y tamaño que se me envio
@@ -105,10 +168,8 @@ bool recibir_consulta_memoria(uint32_t fd_kernel){
     destruir_paquete(respuesta);
 
     return hay_espacio;
-
 }
 
-//aca uso deserializar() para guardarme en una estructura las instrucciones, y despues las cargo en una lista, con cargar_instrucciones
 void recibir_instrucciones(uint32_t fd_kernel, uint32_t pid){
     t_paquete* paquete = recibir_paquete(fd_kernel);
 
@@ -117,37 +178,34 @@ void recibir_instrucciones(uint32_t fd_kernel, uint32_t pid){
         return;
     }
 
-    kernel_to_memoria* kernelToMemoria = deserializar_kernel_to_memoria(paquete->buffer); // <<1>>
+    kernel_to_memoria* kernelToMemoria = deserializar_kernel_to_memoria(paquete->buffer);
 
     log_info(logger, "Recibo archivo con instrucciones para PID %d", kernelToMemoria->pid);
 
-    cargar_instrucciones(kernelToMemoria->archivo, kernelToMemoria->pid); // <<2>>
+    cargar_instrucciones(kernelToMemoria->archivo, kernelToMemoria->pid);
 
     free(kernelToMemoria->archivo);
     free(kernelToMemoria);
     destruir_paquete(paquete);
 }
 
-/*
-    Funcion simplificada para uso practico de checkpoint 2.
-*/
 bool verificar_espacio_memoria(uint32_t pid, uint32_t tamanio){
-    uint32_t tamanio_memoria_default = 4096; //esta constante la tengo que leer del archivo de configuracion
+    uint32_t tamanio_memoria_default = 4096;
+    
+    log_info(logger, "PID: %d - Tamaño Memoria Total: %d - Tamaño Solicitado: %d - Espacio Disponible: %d", 
+        pid, 
+        tamanio_memoria_default, 
+        tamanio,
+        tamanio_memoria_default - tamanio);
+    
     return tamanio_memoria_default > tamanio;
 }
 
-/*
-    <<1>> Recibo la estructura kernel_to_memoria de kernel serializada, con esta funcion la deserializo y la guardo en
-    la estructura kernel_to_memoria de memoria. --
-*/
 kernel_to_memoria* deserializar_kernel_to_memoria(t_buffer* buffer) {
     kernel_to_memoria* data = malloc(sizeof(kernel_to_memoria));
 
-    // Leo la longitud del archivo
     data->archivo_length = buffer_read_uint32(buffer);
-    // Leo el archivo 
     data->archivo = buffer_read_string(buffer, &data->archivo_length);
-    // Leo el tamaño del proceso
     data->tamanio = buffer_read_uint32(buffer);
     return data;
 }
@@ -169,37 +227,32 @@ memoria_to_cpu* parsear_linea(char *linea){
     } else if (string_equals_ignore_case(token[0], "EXIT")) {
         struct_memoria_to_cpu->instruccion = EXIT;
     } else {
-        // Manejo de error
         log_error(logger, "Instrucción desconocida: %s\n", token[0]); 
     }
 
-    //Como se separaron los demas tokens, los que quedaron son los parametros, entonces los uno en un nuevo string.
     if (token[1] != NULL) {
         struct_memoria_to_cpu->argumentos = string_new();
         for (int i = 1; token[i] != NULL; i++) {
             string_append_with_format(&struct_memoria_to_cpu->argumentos, "%s%s", token[i], token[i+1] ? " " : "");
         }
     } else {
-        struct_memoria_to_cpu->argumentos = string_duplicate(""); // vacío
+        struct_memoria_to_cpu->argumentos = string_duplicate("");
     }
 
     string_iterate_lines(token, free);
     free(token);
 
     return struct_memoria_to_cpu;
-    
 }
 
-//esta funcion abre el archivo, usa parsear_linea(), guarda todo en una lista del tipo memoria_to_cpu y guarda en el diccionario.
 void cargar_instrucciones(char* path_archivo, uint32_t pid){
-    
     FILE* archivo = fopen(path_archivo, "r");
     if (!archivo) {
         perror("No se pudo abrir el archivo de instrucciones");
         return;
     }
 
-    lista_instrucciones = list_create();
+    t_list* lista_instrucciones = list_create();
     char* linea = NULL;
     size_t len = 0;
 
@@ -219,30 +272,35 @@ void cargar_instrucciones(char* path_archivo, uint32_t pid){
     free(pid_str);
 }
 
-void enviar_instruccion(uint32_t fd_cpu){
+bool enviar_instruccion(uint32_t fd_cpu){
     t_buffer* buffer = recibir_paquete(fd_cpu);
     uint32_t pid = buffer_read_uint32(buffer);
     uint32_t pc = buffer_read_uint32(buffer);
 
-    t_list* lista_instruccion_to_cpu = dictionary_get(diccionario_procesos, string_itoa(pid));
+    char* pid_str = string_itoa(pid);
+    t_list* lista_instruccion_to_cpu = dictionary_get(diccionario_procesos, pid_str);
+    free(pid_str);
+
     if (lista_instruccion_to_cpu == NULL || pc >= list_size(lista_instruccion_to_cpu)) {
         log_error(logger, "PID no encontrado o PC no valido");
-        return;
+        buffer_destroy(buffer);
+        return false;
     }
 
     memoria_to_cpu* instruccion = list_get(lista_instruccion_to_cpu, pc);
 
-    char * tam_argumentos = string_length(instruccion->argumentos);
+    uint32_t tam_argumentos = string_length(instruccion->argumentos);
 
-    t_paquete* paquete = crear_paquete(ENVIAR_INSTRUCCION, buffer_create(0)); //que codigo de operacion utilizo aca?
+    t_paquete* paquete = crear_paquete(FETCH, buffer_create(0));
     buffer_add_uint8(paquete->buffer, instruccion->instruccion); 
-    buffer_add_string(paquete->buffer,tam_argumentos, instruccion->argumentos); 
+    buffer_add_string(paquete->buffer, tam_argumentos, instruccion->argumentos); 
 
     enviar_paquete(paquete, fd_cpu);
 
     destruir_paquete(paquete);
     buffer_destroy(buffer);
     
+    return instruccion->instruccion == EXIT;
 }
 
 /* void leer_configuracion(char* config){
@@ -252,7 +310,4 @@ void enviar_instruccion(uint32_t fd_cpu){
 //nota: decirle a tomas que me mande el pid cuando me manda tambien el archivo en la funcion recibir_instrucciones, porque despues yo lo uso
 //para mandarlo al diccionario de una.
 
-//o segunda opcion, declarar una estructura kernel_to_memoria y de ahi voy sacando los atributos para usar en el diccionario. 
-//no si tiene sentido eso.¿?
 
-//faltaria que en los hilos empiece a llamar a las funciones y eso.
