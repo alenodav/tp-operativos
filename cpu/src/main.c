@@ -300,7 +300,7 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
         pc++;
     }
     
-    // Check Interrupt de kernel
+    // Check Interrupt de kernel del mismo pid
     t_paquete* interrupcion = recibir_paquete(fd_interrupt);
     if(interrupcion != NULL) {
         uint32_t pid_interrupcion = buffer_read_uint32(interrupcion->buffer);
