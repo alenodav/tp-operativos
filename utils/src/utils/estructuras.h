@@ -71,3 +71,8 @@ typedef struct {
     char* data;
     uint32_t data_length;
 } t_memoria;
+
+typedef struct {
+    t_instruccion instruccion;
+    char* parametros;
+} memoria_to_cpu;
