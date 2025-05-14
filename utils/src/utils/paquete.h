@@ -19,7 +19,9 @@ typedef enum {
     SYSCALL,
     INTERRUPT,
     FETCH,
-    IO
+    IO,
+    CONSULTA_MEMORIA_PROCESO,
+    TERMINAR_PROCESO
 } t_operacion;
 
 typedef struct {

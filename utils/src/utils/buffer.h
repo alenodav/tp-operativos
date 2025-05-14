@@ -42,4 +42,10 @@ void buffer_add_string(t_buffer *buffer, uint32_t length, char *string);
 
 // Lee un string y su longitud del buffer y avanza el offset
 char *buffer_read_string(t_buffer *buffer, uint32_t *length);
+
+// Agrega un bool al buffer
+void buffer_add_bool (t_buffer *buffer, bool data);
+
+// Lee un bool del buffer y avanza el offset
+bool buffer_read_bool (t_buffer *buffer);
 #endif

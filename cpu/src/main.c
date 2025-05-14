@@ -79,7 +79,6 @@ void handshake_kernel(void* arg){
 
 void recibir_proceso(void* _){
     while(1){
-        // recibo del kernel el pid y pc
         t_paquete* paquete = recibir_paquete(fd_dispatch);
 
         kernel_to_cpu paquete_proceso;
@@ -87,7 +86,6 @@ void recibir_proceso(void* _){
         paquete_proceso.pc = buffer_read_uint32(paquete->buffer);
 
         log_debug(logger, "Recibido PID: %d - PC: %d", paquete_proceso.pid, paquete_proceso.pc);
-
 
         // FETCH a memoria
         solicitar_instruccion(paquete_proceso.pid, paquete_proceso.pc);
@@ -122,7 +120,9 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
 
     switch (instruccion_recibida.instruccion) {
         case NOOP:
-            log_debug(logger, "PID: %d - EXECUTE - NOOP", pid);
+           log_debug(logger, "PID: %d - EXECUTE - NOOP", pid);
+            usleep(1000);
+            log_debug(logger, "PID: %d - NOOP completado", pid);
             break;
         case WRITE: {
             char** parametros = string_split(instruccion_recibida.parametros, " ");
@@ -320,5 +320,4 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
         }
         destruir_paquete(interrupcion);
     }
-
 }
