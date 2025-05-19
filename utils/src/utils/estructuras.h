@@ -26,7 +26,7 @@ typedef struct {
 
 typedef struct {
     t_instruccion syscall;
-    void* parametros;
+    char* parametros;
     uint32_t parametros_length;
     uint32_t pid;
 } t_syscall;
