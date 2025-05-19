@@ -220,46 +220,39 @@ void solicitar_instruccion(uint32_t pid,uint32_t pc){
             break;
         }
         case IO_SYSCALL: {
-            char** parametros = string_split(instruccion_recibida.parametros, " ");
-            char* dispositivo = parametros[0];
-            uint32_t tiempo = atoi(parametros[1]);
-            log_debug(logger, "PID: %d - EXECUTE - IO - Dispositivo: %s, Tiempo: %d",pid, dispositivo, tiempo);
+           log_debug(logger, "PID: %d - EXECUTE - IO - Parámetros: %s", pid, instruccion_recibida.parametros);
 
-            t_buffer* buffer = buffer_create(sizeof(io_parameters));
-            io_parameters io_params;
-            io_params.identificador = dispositivo;
-            io_params.tiempo_bloqueo = tiempo;
-            buffer_add(buffer, &io_params, sizeof(io_parameters));
+            t_buffer* buffer = buffer_create(sizeof(t_syscall));
+            t_syscall syscall;
+            syscall.syscall = IO_SYSCALL;
+            syscall.parametros = instruccion_recibida.parametros;
+            syscall.parametros_length = strlen(instruccion_recibida.parametros);
+            syscall.pid = pid;
+            buffer_add(buffer, &syscall, sizeof(t_syscall));
 
-            t_paquete* paquete = crear_paquete(IO, buffer);
+            t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_interrupt);
 
             buffer_destroy(buffer);
             destruir_paquete(paquete);
-            string_iterate_lines(parametros, (void*)free);
-            free(parametros);
             break;
         }
         case INIT_PROC: {
-            char** parametros = string_split(instruccion_recibida.parametros, " ");
-            char* archivo = parametros[0];
-            uint32_t tamanio = atoi(parametros[1]);
+            log_debug(logger, "PID: %d - EXECUTE - INIT_PROC - Parámetros: %s", pid, instruccion_recibida.parametros);
 
-            log_debug(logger, "PID: %d - EXECUTE - INIT_PROC - Nombre: %s, Tamaño: %d",pid, archivo, tamanio);
+            t_buffer* buffer = buffer_create(sizeof(t_syscall));
+            t_syscall syscall;
+            syscall.syscall = INIT_PROC;
+            syscall.parametros = instruccion_recibida.parametros;
+            syscall.parametros_length = strlen(instruccion_recibida.parametros);
+            syscall.pid = pid;
+            buffer_add(buffer, &syscall, sizeof(t_syscall));
 
-            t_buffer* buffer = buffer_create(sizeof(init_proc_parameters));
-            init_proc_parameters init_params;
-            init_params.archivo = archivo;
-            init_params.tamanio_proceso = tamanio;
-            buffer_add(buffer, &init_params, sizeof(init_proc_parameters));
-
-            t_paquete* paquete = crear_paquete(INIT_PROC, buffer);
+            t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_interrupt);
 
             buffer_destroy(buffer);
             destruir_paquete(paquete);
-            string_iterate_lines(parametros, (void*)free);
-            free(parametros);
             break;
         }
         case DUMP_MEMORY: {
