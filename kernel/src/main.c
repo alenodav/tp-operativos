@@ -113,15 +113,27 @@ void finalizar_modulo() {
 
 void escucha_io(){  
     uint32_t socket_io = esperar_cliente(fd_escucha_io);
-    char *identificador = recibir_handshake(socket_io);
-    if (string_equals_ignore_case(identificador, "io")) {
-        log_debug(logger, "Handshake IO a Kernel OK.");
+    char* identificador = recibir_handshake(socket_io);
+    if (!string_is_empty(identificador)) {
+        log_info(logger, "Handshake IO a Kernel OK.");
+        log_info(logger, string_from_format("Se inicio la instancia: %s", identificador));
     }
     else {
-        log_error(logger, "Handshake IO a Kernel error.");
+        log_error(logger, "Handshake IO a Kernel fallido, la instancia de IO debe tener un nombre.");
     }
     free(identificador);
     enviar_handshake(socket_io, "KERNEL");
+    
+    //test
+    t_buffer* buffer = buffer_create(sizeof(uint32_t)*2);
+    buffer_add_uint32(buffer, 1);
+    buffer_add_uint32(buffer, 1000000*5);
+    t_paquete* paquete = crear_paquete(IO, buffer);
+    enviar_paquete(paquete, socket_io);
+    recibir_paquete(socket_io);
+
+    getchar();
+
     liberar_conexion(socket_io);
     liberar_conexion(fd_escucha_io);
     return;
