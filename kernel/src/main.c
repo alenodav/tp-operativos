@@ -1,31 +1,14 @@
 #include<main.h>
 
 int main(int argc, char* argv[]) {
-    config = crear_config("kernel");
-    logger = crear_log(config, "kernel");
-    log_debug(logger, "Config y Logger creados correctamente.");
+    iniciar_modulo();
 
-    pid_counter = 0;
     kernel_to_memoria *archivo_inicial = malloc(sizeof(kernel_to_memoria));
     archivo_inicial->archivo = argv[1];
     archivo_inicial->archivo_length = string_length(archivo_inicial->archivo) + 1;
     archivo_inicial->tamanio = atoi(argv[2]);
-    cola_new = list_create();
-    cola_ready = list_create();
-    cola_blocked = list_create();
-    cola_exec = list_create();
-    archivos_instruccion = list_create();
     list_add(archivos_instruccion, archivo_inicial);
-    sem_init(sem_largo_plazo, 0, 1);
-    sem_init(sem_cpus, 0, 1);
-    sem_init(sem_io, 0, 1);
-    inicio_modulo = false;
-    fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));
-    fd_escucha_cpu_interrupt = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_INTERRUPT"));
-    cpu_list = list_create();
-    fd_escucha_io = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_IO"));  
-    io_list = list_create();
-    io_queue_list = list_create();
+
     pthread_t administrador_cpu_dispatch;
     pthread_create(&administrador_cpu_dispatch, NULL, (void*)administrar_cpus_dispatch, NULL);
     pthread_detach(administrador_cpu_dispatch);
@@ -59,20 +42,73 @@ int main(int argc, char* argv[]) {
     liberar_conexion(fd_escucha_cpu_interrupt);
 
     pthread_t planificador_largo_plazo;
-    pthread_create(&planificador_largo_plazo, NULL, (void*)largo_plazo, (void*)archivo_inicial);
+    pthread_create(&planificador_largo_plazo, NULL, (void*)largo_plazo, NULL);
     pthread_join(planificador_largo_plazo, NULL);
 
+    pthread_t planificador_corto_plazo;
+    pthread_create(&planificador_corto_plazo, NULL, (void*)corto_plazo, NULL);
+    pthread_join(planificador_corto_plazo, NULL);
+
+    finalizar_modulo();
+
+    return 0;
+}
+
+void iniciar_modulo() {
+    config = crear_config("kernel");
+    logger = crear_log(config, "kernel");
+    log_debug(logger, "Config y Logger creados correctamente.");
+
+    pid_counter = 0;
+
+    cola_new = list_create();
+    cola_ready = list_create();
+    cola_blocked = list_create();
+    cola_exec = list_create();
+
+    archivos_instruccion = list_create();
+
+    sem_init(sem_largo_plazo, 0, 1);
+    sem_init(sem_cpus, 0, 1);
+    sem_init(sem_io, 0, 1);
+    sem_init(sem_execute, 0, 1);
+    sem_init(sem_corto_plazo, 0, 1);
+    sem_init(sem_ready, 0, 1);
+    sem_init(sem_blocked, 0, 1);
+
+    inicio_modulo = false;
+
+    fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));
+    fd_escucha_cpu_interrupt = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_INTERRUPT"));
+    cpu_list = list_create();
+    fd_escucha_io = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_IO"));  
+    io_list = list_create();
+    io_queue_list = list_create();
+}
+
+void finalizar_modulo() {
     list_destroy(cola_new);
     list_destroy(cola_ready);
     list_destroy(cola_blocked);
     list_destroy(cola_exec);
     list_destroy(archivos_instruccion);
+    list_destroy(cpu_list);
+    list_destroy(io_list);
+    list_destroy(io_queue_list);
+
+    sem_destroy(sem_largo_plazo);
+    sem_destroy(sem_cpus);
+    sem_destroy(sem_io);
+    sem_destroy(sem_execute);
+    sem_destroy(sem_corto_plazo);
+    sem_destroy(sem_ready);
+    sem_destroy(sem_blocked);
+
+    liberar_conexion(fd_escucha_io);
 
     config_destroy(config);
     log_info(logger, "Finalizo el proceso.");
     log_destroy(logger);
-
-    return 0;
 }
 
 void escucha_io(){  
@@ -165,9 +201,30 @@ void planificar_fifo_largo_plazo() {
 t_estado_metricas *crear_metrica_estado(t_estado estado) {
     t_estado_metricas *metrica_agregar = malloc(sizeof(t_estado_metricas));
     metrica_agregar->estado = estado;
-    metrica_agregar->ME = 1;
-    metrica_agregar->MT = temporal_create();
+    metrica_agregar->ME = 0;
+    metrica_agregar->MT = NULL;
     return metrica_agregar;
+}
+
+void agregar_metricas_estado(t_pcb *pcb) {
+    for (t_estado i = NEW;i < 7;i++) {
+        t_estado_metricas *new = crear_metrica_estado(i);
+        list_add(pcb->metricas, new);
+    }
+}
+
+void pasar_por_estado(t_pcb *pcb, t_estado estado, t_estado estado_anterior) {
+    t_estado_metricas *estado_a_pasar = list_get(pcb->metricas, estado);
+    estado_a_pasar->ME++;
+    if (estado_a_pasar->MT == NULL) {
+        estado_a_pasar->MT = temporal_create();
+    }
+    else {
+        temporal_resume(estado_a_pasar->MT);
+    }
+    if (estado != NEW) {
+        log_info(logger, "## (%d) Pasa del estado %d al estado %d", pcb->pid, estado_anterior, estado);
+    }
 }
 
 t_pcb* crear_proceso() {
@@ -176,12 +233,13 @@ t_pcb* crear_proceso() {
     pcb->pid = pid_counter;
     pcb->pc = 0;
     pcb->metricas = list_create();
-    t_estado_metricas *new = crear_metrica_estado(NEW);
-    list_add(pcb->metricas, new);
+    agregar_metricas_estado(pcb);
+    pasar_por_estado(pcb, NEW, NEW);
     pcb->estado_actual = NEW;
     list_add(cola_new, pcb);
     archivo->pid = pid_counter;
     pid_counter += 1;
+    log_info(logger, "## (%d) - Se crea el proceso - Estado: NEW", pcb->pid);
     return pcb;
 }
 
@@ -229,11 +287,10 @@ t_buffer *serializar_kernel_to_memoria(kernel_to_memoria* archivo) {
 void pasar_ready(t_pcb *pcb, t_estado_metricas* metricas) {
     temporal_stop(metricas->MT);
     pcb->estado_actual = READY;
-    if (metricas->estado == NEW) {
-        t_estado_metricas *ready = crear_metrica_estado(READY);
-        list_add(pcb->metricas, ready);
-    }
+    pasar_por_estado(pcb, READY, NEW);
+    sem_wait(sem_ready);
     list_add(cola_ready, pcb);
+    sem_post(sem_ready);
 }
 
 bool terminar_proceso_memoria (uint32_t pid) {
@@ -266,12 +323,15 @@ void terminar_proceso(uint32_t pid) {
     if (!consulta_memoria) {
         return;
     }
+    sem_wait(sem_execute);
     t_pcb *proceso = pcb_by_pid(cola_exec, pid);
+    sem_post(sem_execute);
     t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
     temporal_stop(metricas_exec->MT);
+    t_estado estado_anterior = proceso->estado_actual;
     proceso->estado_actual = EXIT_STATUS;
-    t_estado_metricas *exit = crear_metrica_estado(EXIT_STATUS);
-    list_add(proceso->metricas, exit);
+    pasar_por_estado(proceso, EXIT_STATUS, estado_anterior);
+    log_info(logger, "## (%d) - Finaliza el proceso", pid);
     loggear_metricas_estado(proceso);
     free(proceso);
     sem_post(sem_largo_plazo);
@@ -292,8 +352,9 @@ void loggear_metricas_estado(t_pcb* proceso) {
     t_list_iterator *metricas_iterator = list_iterator_create(proceso->metricas);
     while(list_iterator_has_next(metricas_iterator)){
         t_estado_metricas* metrica = list_iterator_next(metricas_iterator);
-        string_append_with_format(&metricas_estado, "%s  (%d) (%lu), ", t_estado_to_string(metrica->estado), metrica->ME, metrica->MT->elapsed_ms);
+        string_append_with_format(&metricas_estado, "%s  (%d) (%lu), ", t_estado_to_string(metrica->estado), metrica->ME, temporal_gettime(metrica->MT));
         list_iterator_remove(metricas_iterator);
+        temporal_destroy(metrica->MT);
         free(metrica);
     }
     list_destroy(proceso->metricas);
@@ -440,13 +501,18 @@ void ejecutar_io_syscall (uint32_t pid, char* id_io, uint32_t tiempo) {
         terminar_proceso(pid);
         return;
     }
+    sem_wait(sem_execute);
     t_pcb *proceso = pcb_by_pid(cola_exec, pid);
+    sem_post(sem_execute);
     t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
     temporal_stop(metricas_exec->MT);
+    t_estado estado_anterior = proceso->estado_actual;
     proceso->estado_actual = BLOCKED;
-    t_estado_metricas *blocked = crear_metrica_estado(BLOCKED);
-    list_add(proceso->metricas, blocked);
+    pasar_por_estado(proceso, BLOCKED, estado_anterior);
+    log_info(logger, "## (%d) Bloqueado por IO: %s", pid, id_io);
+    sem_wait(sem_blocked);
     list_add(cola_blocked, proceso);
+    sem_post(sem_blocked);
     kernel_to_io *io_enviar = malloc(sizeof(io_enviar));
     io_enviar->pid = pid;
     io_enviar->tiempo_bloqueo = tiempo;
@@ -493,6 +559,7 @@ void manejar_respuesta_io(t_io *io_espera) {
     }
     t_pcb *pcb = pcb_by_pid(cola_blocked, io_espera->proceso_ejecucion);
     pasar_ready(pcb, list_get(pcb->metricas, BLOCKED));
+    log_info(logger, "## (%d) Finalizo IO y pasa a READY", io_espera->proceso_ejecucion);
     io_espera->estado = false;
     io_espera->proceso_ejecucion = -1;
     t_io_queue *cola_io = io_queue_find_by_id(io_espera->identificador);
@@ -532,4 +599,155 @@ t_buffer *serializar_kernel_to_io (kernel_to_io* data) {
     buffer_add_uint32(buffer, data->pid);
     buffer_add_uint32(buffer, data->tiempo_bloqueo);
     return buffer;
+}
+
+void corto_plazo() {
+    char* algoritmo_config = config_get_string_value(config, "ALGORITMO_PLANIFICACION");
+    if (string_equals_ignore_case(algoritmo_config, "FIFO")) {
+        planificar_fifo_corto_plazo();
+    }
+    else if (string_equals_ignore_case(algoritmo_config, "PMCP")) {
+
+    }
+    else {
+        log_error(logger, "Algoritmo desconocido para planificador de corto plazo.");
+    }
+    return;
+}
+
+void planificar_fifo_corto_plazo() {
+    while (1) {
+        bool no_hay_proceso_ready = list_is_empty(cola_ready);
+        t_cpu *cpu_a_enviar = list_find(cpu_list, find_cpu_libre);
+        if (no_hay_proceso_ready || cpu_a_enviar == NULL) {
+            sem_wait(sem_corto_plazo);
+            continue;
+        }
+        t_pcb *proceso_a_ejecutar = list_remove(cola_ready, 0);
+        pasar_exec(proceso_a_ejecutar);
+        enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
+        pthread_t respuesta_cpu; 
+        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,NULL);
+        pthread_detach(respuesta_cpu);   
+    }
+}
+
+bool find_cpu_libre(void* cpu) {
+    t_cpu *cpu_cast = (t_cpu*) cpu;
+    return !(cpu_cast->estado);
+}
+
+void pasar_exec(t_pcb *pcb) {
+    t_estado_metricas *metrica_ready = list_get(pcb->metricas, READY);
+    temporal_stop(metrica_ready->MT);
+    t_estado estado_anterior = pcb->estado_actual;
+    pcb->estado_actual = EXEC;
+    pasar_por_estado(pcb, EXEC, estado_anterior);
+    sem_wait(sem_execute);
+    list_add(cola_exec, pcb);
+    sem_post(sem_execute);
+}
+
+void enviar_kernel_to_cpu(uint32_t socket, t_pcb *pcb) {
+    kernel_to_cpu *proceso = malloc(sizeof(kernel_to_cpu));
+    proceso->pc = pcb->pc;
+    proceso->pid = pcb->pid;
+    t_buffer *buffer = serializar_kernel_to_cpu(proceso);
+    t_paquete *paquete = crear_paquete(DISPATCH, buffer);
+    enviar_paquete(paquete, socket);
+    free(proceso);
+}
+
+t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* param) {
+    t_buffer *ret = buffer_create(sizeof(uint32_t) * 2);
+    buffer_add_uint32(ret, param->pid);
+    buffer_add_uint32(ret, param->pc);
+    return ret;
+}
+
+void atender_respuesta_cpu(t_cpu *cpu) {
+    t_paquete *paquete = recibir_paquete(cpu->socket_dispatch);
+    if (paquete->codigo_operacion != SYSCALL) {
+        log_error(logger, "Codigo de operacion incorrecto. Esperado: %d, Recibido %d", SYSCALL, paquete->codigo_operacion);
+    }
+    t_syscall *syscall_recibida = deserializar_t_syscall(paquete->buffer);
+    destruir_paquete(paquete);
+    log_info(logger, "## (%d) - Solicito syscall: (%s)",syscall_recibida->pid, t_instruccion_to_string(syscall_recibida->syscall));
+    char** parametros = NULL;
+    switch (syscall_recibida->syscall){
+        case INIT_PROC:
+            parametros = string_split(syscall_recibida->parametros, " ");
+            char* archivo = string_duplicate(parametros[0]);
+            uint32_t tamanio_proceso = atoi(parametros[1]);
+            ejecutar_init_proc(syscall_recibida->pid, archivo, tamanio_proceso, cpu);
+            string_iterate_lines(parametros, (void*)free);
+            free(parametros);
+            break;
+        case IO_SYSCALL:
+            parametros = string_split(syscall_recibida->parametros, " ");
+            char* dispositivo = string_duplicate(parametros[0]);
+            uint32_t tiempo = atoi(parametros[1]);
+            ejecutar_io_syscall(syscall_recibida->pid, dispositivo, tiempo);
+            string_iterate_lines(parametros, (void*)free);
+            free(parametros);
+            break;
+        case DUMP_MEMORY:
+            break; 
+        case EXIT:
+            terminar_proceso(syscall_recibida->pid);
+        default:
+            break;
+    }
+}
+
+char *t_instruccion_to_string(t_instruccion instruccion) {
+    switch(instruccion){
+        case NOOP:
+            return "NOOP";
+            break;
+        case WRITE:
+            return "WRITE";
+            break;
+        case READ:
+            return "READ";
+            break;
+        case IO_SYSCALL:
+            return "IO_SYSCALL";
+            break;
+        case INIT_PROC:
+            return "INIT_PROC";
+            break;    
+        case GOTO:
+            return "GOTO";
+            break;
+        case DUMP_MEMORY:
+            return "DUMP_MEMORY";
+            break;
+        case EXIT:
+            return "EXIT";
+            break;
+        default:
+            return "";
+            break;
+    }
+}
+
+t_syscall *deserializar_t_syscall(t_buffer* buffer) {
+    t_syscall* ret = malloc(sizeof(t_syscall));
+    ret->syscall = buffer_read_uint8(buffer);
+    ret->parametros_length = buffer_read_uint32(buffer);
+    ret->parametros = buffer_read_string(buffer, &ret->parametros_length);
+    ret->pid = buffer_read_uint32(buffer);
+    return ret;
+}
+
+void ejecutar_init_proc(uint32_t pid, char* nombre_archivo, uint32_t tamanio_proceso, t_cpu* cpu) {
+    kernel_to_memoria *archivo_inicial = malloc(sizeof(kernel_to_memoria));
+    archivo_inicial->archivo = nombre_archivo;
+    archivo_inicial->archivo_length = string_length(archivo_inicial->archivo) + 1;
+    archivo_inicial->tamanio = tamanio_proceso;
+    list_add(archivos_instruccion, archivo_inicial);
+    sem_post(sem_largo_plazo);
+    t_pcb *pcb = pcb_by_pid(cola_exec, pid);
+    enviar_kernel_to_cpu(cpu->socket_dispatch, pcb);
 }

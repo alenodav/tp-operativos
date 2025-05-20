@@ -53,12 +53,16 @@ typedef struct {
     t_queue *cola_procesos;
 } t_io_queue;
 
+void iniciar_modulo();
+void finalizar_modulo();
 void escucha_io();
 void handshake_memoria();
 void escucha_cpu();
 void largo_plazo();
 void planificar_fifo_largo_plazo();
 t_estado_metricas *crear_metrica_estado(t_estado);
+void agregar_metricas_estado(t_pcb *);
+void pasar_por_estado(t_pcb *, t_estado, t_estado );
 t_pcb *crear_proceso();
 bool consultar_a_memoria();
 void enviar_instrucciones();
@@ -83,6 +87,16 @@ t_list *io_filter_by_id (char *);
 t_io_queue *io_queue_find_by_id (char *);
 bool io_liberada(void* );
 t_buffer *serializar_kernel_to_io (kernel_to_io* );
+void corto_plazo();
+void planificar_fifo_corto_plazo();
+bool find_cpu_libre(void*);
+void pasar_exec(t_pcb *);
+void enviar_kernel_to_cpu(uint32_t , t_pcb *); 
+t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* );
+void atender_respuesta_cpu(t_cpu *);
+char *t_instruccion_to_string(t_instruccion ); 
+t_syscall *deserializar_t_syscall(t_buffer* );
+void ejecutar_init_proc(uint32_t , char* , uint32_t , t_cpu* ); 
 
 
 t_log *logger;
@@ -103,3 +117,7 @@ bool inicio_modulo;
 sem_t *sem_largo_plazo;
 sem_t *sem_cpus;
 sem_t *sem_io;
+sem_t *sem_execute;
+sem_t *sem_corto_plazo;
+sem_t *sem_ready;
+sem_t *sem_blocked;
