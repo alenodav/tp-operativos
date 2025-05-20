@@ -225,11 +225,12 @@ kernel_to_memoria *deserializar_kernel_to_memoria(t_buffer *buffer)
 {
     kernel_to_memoria *data = malloc(sizeof(kernel_to_memoria));
 
-    data->archivo_length = buffer_read_uint32(buffer);
     data->archivo = buffer_read_string(buffer, &data->archivo_length);
+    data->archivo_length = buffer_read_uint32(buffer);
     data->tamanio = buffer_read_uint32(buffer);
     return data;
 }
+
 
 struct_memoria_to_cpu *parsear_linea(char *linea)
 {
