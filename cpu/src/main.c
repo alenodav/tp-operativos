@@ -1,81 +1,66 @@
 #include <main.h>
 
 t_log* logger;
-t_config* config;
-uint32_t fd_dispatch;
-uint32_t fd_interrupt;
-uint32_t fd_memoria;
 
-int main(int argc, char* argv[]){
-    char* id_cpu = argv[1];
-    char log_filename[64];
-    sprintf(log_filename, "cpu-%s.log", id_cpu);
-    logger = log_create(log_filename, "CPU", true, LOG_LEVEL_DEBUG);
-    log_debug(logger, "Logger de CPU id:%s creado.", id_cpu);
+int main(int argc, char* argv[]) {
+    // config
+    t_config *config = crear_config("cpu");
 
-    config = crear_config("cpu");
+    // logging 
+    logger = crear_log(config, "cpu");
+    log_debug(logger, "Config y Logger de cpu creados correctamente.");
 
-    // Conexion a Memoria
+    // conexion (cliente a memoria)
+
     pthread_t thread_memoria;
-    pthread_create(&thread_memoria, NULL, handshake_memoria, (void*)id_cpu);
+    pthread_create(&thread_memoria, NULL, handshake_memoria, config);
     pthread_detach(thread_memoria); 
 
-    // Conexion a Kernel , dispatch y interrupt
+    // conexion (cliente a kernel)
     pthread_t thread_kernel;
-    pthread_create(&thread_kernel, NULL, handshake_kernel, (void*)id_cpu);
+    pthread_create(&thread_kernel, NULL, handshake_kernel, config);
     pthread_detach(thread_kernel);
 
     getchar();
 
+    //log_debug(logger, "finalizo el proceso");
+
+
+    // liberar
     log_destroy(logger);
     config_destroy(config);
     return 0;
 }
 
-void handshake_memoria(void* arg){
-    char* id_cpu = (char*)arg;
-    fd_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+void handshake_memoria(t_config* config){
+    uint32_t fd_cpu_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
 
-    enviar_handshake(fd_memoria, "CPU");
-    char* identificador = recibir_handshake(fd_memoria);
+    enviar_handshake(fd_cpu_memoria, "CPU");
+    char* identificador = recibir_handshake(fd_cpu_memoria);
 
     if (string_equals_ignore_case(identificador, "memoria")) {
-        log_debug(logger, "Handshake Memoria a CPU-%s OK.",id_cpu);
+        log_debug(logger, "Handshake Memoria a CPU OK.");
     }
     else {
-        log_error(logger, "Handshake Memoria a CPU-%s error.",id_cpu);
+        log_error(logger, "Handshake Memoria a CPU error.");
     }
 
     free(identificador);
+    liberar_conexion(fd_cpu_memoria);
 }
 
-void handshake_kernel(void* arg){
-    char* id_cpu = (char*)arg;
+void handshake_kernel(t_config* config){
+    uint32_t fd_cpu_kernel = crear_socket_cliente(config_get_string_value(config, "IP_KERNEL"), config_get_string_value(config, "PUERTO_KERNEL_DISPATCH"));
 
-    // Conexion dispatch
-    fd_dispatch = crear_socket_cliente(config_get_string_value(config,"IP_KERNEL"),config_get_string_value(config,"PUERTO_KERNEL_DISPATCH"));
-    enviar_handshake(fd_dispatch, id_cpu);
-    char* identificador_dispatch = recibir_handshake(fd_dispatch);
+    enviar_handshake(fd_cpu_kernel, "CPU");
+    char* identificador = recibir_handshake(fd_cpu_kernel);
 
-    if (string_equals_ignore_case(identificador_dispatch, "kernel")) {
-        log_debug(logger, "Handshake Kernel DISPATCH a CPU-%s OK.", id_cpu);
-    } else {
-        log_error(logger, "Handshake Kernel DISPATCH a CPU-%s error.", id_cpu);
+    if (string_equals_ignore_case(identificador, "kernel")) {
+        log_debug(logger, "Handshake Kernel a CPU OK.");
     }
-    free(identificador_dispatch);
-
-    // Conexion interrupt
-    fd_interrupt = crear_socket_cliente(config_get_string_value(config,"IP_KERNEL"),config_get_string_value(config,"PUERTO_KERNEL_INTERRUPT"));
-    enviar_handshake(fd_interrupt, id_cpu);
-    char* identificador_interrupt = recibir_handshake(fd_interrupt);
-
-    if (string_equals_ignore_case(identificador_interrupt, "kernel")) {
-        log_debug(logger, "Handshake Kernel INTERRUPT a CPU-%s OK.", id_cpu);
-    } else {
-        log_error(logger, "Handshake Kernel INTERRUPT a CPU-%s error.", id_cpu);
+    else {
+        log_error(logger, "Handshake Kernel a CPU error.");
     }
-    free(identificador_interrupt);
-}
 
 void recibir_proceso(void* _){
     while(1){
