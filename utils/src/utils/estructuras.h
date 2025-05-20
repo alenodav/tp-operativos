@@ -1,3 +1,6 @@
+#ifndef ESTRUCTURAS_H
+#define ESTRUCTURAS_H
+
 #include<commons/collections/list.h>
 #include<stdio.h>
 #include<stdlib.h>
@@ -76,3 +79,5 @@ typedef struct {
     t_instruccion instruccion;
     char* parametros;
 } struct_memoria_to_cpu;
+
+#endif // ESTRUCTURAS_H

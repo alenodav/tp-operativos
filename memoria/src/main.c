@@ -221,6 +221,7 @@ bool verificar_espacio_memoria(uint32_t pid, uint32_t tamanio)
     return tamanio_memoria_default > tamanio;
 }
 
+
 kernel_to_memoria *deserializar_kernel_to_memoria(t_buffer *buffer)
 {
     kernel_to_memoria *data = malloc(sizeof(kernel_to_memoria));
