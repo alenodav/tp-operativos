@@ -96,6 +96,13 @@ void recibir_proceso(void* _){
 }
 
 void solicitar_instruccion(kernel_to_cpu* instruccion){
+    
+    struct_memoria_to_cpu *instruccion_recibida = malloc(sizeof(struct_memoria_to_cpu));
+
+    t_paquete* siguiente_instruccion = malloc(sizeof(t_paquete));
+
+
+    do{
     // fetch
     t_buffer* buffer = serializar_kernel_to_cpu(instruccion);
 
@@ -103,9 +110,8 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
     enviar_paquete(paquete,fd_memoria);
 
     // recibo la siguiente instruccion de memoria
-    t_paquete* siguiente_instruccion = recibir_paquete(fd_memoria);
+    siguiente_instruccion = recibir_paquete(fd_memoria);
     
-    struct_memoria_to_cpu *instruccion_recibida = malloc(sizeof(struct_memoria_to_cpu));
     instruccion_recibida->instruccion = buffer_read_uint32(siguiente_instruccion->buffer);
     instruccion_recibida->parametros_length  = buffer_read_uint32(siguiente_instruccion->buffer);
     instruccion_recibida->parametros = buffer_read_string(buffer, &instruccion_recibida->parametros_length);
@@ -117,6 +123,9 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
            log_debug(logger, "PID: %d - EXECUTE - NOOP", pid);
             usleep(1000);
             log_debug(logger, "PID: %d - NOOP completado", pid);
+
+            free(instruccion_recibida->parametros);
+            destruir_paquete(siguiente_instruccion);
             break;
         case WRITE: {
             cpu_write *escribir = malloc(sizeof(cpu_write));
@@ -149,6 +158,9 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             destruir_paquete(respuesta);
             string_iterate_lines(parametros, (void*)free);
             free(parametros);
+
+            free(instruccion_recibida->parametros);
+            destruir_paquete(siguiente_instruccion);
             break;
         }
         case READ: {
@@ -178,6 +190,9 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             destruir_paquete(respuesta);
             string_iterate_lines(parametros, (void*)free);
             free(parametros);
+
+            free(instruccion_recibida->parametros);
+            destruir_paquete(siguiente_instruccion);
             break;
         }
         case GOTO: {
@@ -203,6 +218,9 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             
             free(mensaje);
             destruir_paquete(respuesta);
+
+            free(instruccion_recibida->parametros);
+            destruir_paquete(siguiente_instruccion);
             break;
         }
         case IO_SYSCALL: {
@@ -266,13 +284,18 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             log_error(logger, "PID: %d - Instrucción desconocida", pid);
             break;
     }
+
+        if(instruccion_recibida->instruccion != GOTO) { 
+            pc++;
+        }
+
+    } while(instruccion_recibida->instruccion != EXIT || instruccion_recibida->instruccion != INIT_PROC || instruccion_recibida->instruccion != DUMP_MEMORY || instruccion_recibida->instruccion != IO_SYSCALL);
+    
     
     free(instruccion_recibida->parametros);
     destruir_paquete(siguiente_instruccion);
 
-    if(instruccion_recibida->instruccion != GOTO) {
-        pc++;
-    }
+
     
     // Check Interrupt de kernel - Se comenta para segundo checkpoint ya que no hace falta verificar por interrupciones
     //check_interrupt(pid);
