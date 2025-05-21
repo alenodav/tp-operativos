@@ -32,6 +32,7 @@ typedef struct {
     char* parametros;
     uint32_t parametros_length;
     uint32_t pid;
+    uint32_t pc;
 } t_syscall;
 
 typedef struct {
@@ -62,6 +63,7 @@ typedef struct {
 
 typedef struct {
     uint32_t direccion;
+    uint32_t datos_length;
     char* datos;
 } cpu_write;
 
@@ -77,6 +79,7 @@ typedef struct {
 
 typedef struct {
     t_instruccion instruccion;
+    uint32_t parametros_length;
     char* parametros;
 } struct_memoria_to_cpu;
 

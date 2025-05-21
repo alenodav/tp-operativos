@@ -116,7 +116,7 @@ void escucha_io(){
     char* identificador = recibir_handshake(socket_io);
     if (!string_is_empty(identificador)) {
         log_info(logger, "Handshake IO a Kernel OK.");
-        log_info(logger, string_from_format("Se inicio la instancia: %s", identificador));
+        log_info(logger, "Se inicio la instancia: %s", identificador);
     }
     else {
         log_error(logger, "Handshake IO a Kernel fallido, la instancia de IO debe tener un nombre.");

@@ -1,3 +1,6 @@
+#ifndef MAIN_H_
+#define MAIN_H_
+
 #include <commons/log.h>
 #include <utils/hello.h>
 #include <utils/conexion.h>
@@ -8,7 +11,21 @@
 #include <utils/log.h>
 #include <utils/estructuras.h>
 
-void handshake_memoria(t_config* config);
-void handshake_kernel(t_config* config);
-void recibir_proceso(uint32_t);
-void solicitar_instruccion(uint32_t, uint32_t,uint32_t);
+// Variables globales
+extern t_log* logger;
+extern t_config* config;
+extern uint32_t fd_dispatch;
+extern uint32_t fd_interrupt;
+extern uint32_t fd_memoria;
+
+void handshake_memoria(void*);
+void handshake_kernel(void*);
+void recibir_proceso(void*);
+void solicitar_instruccion(kernel_to_cpu* instruccion);
+t_buffer *serializar_cpu_write(cpu_write *data);
+t_buffer *serializar_cpu_read(cpu_read *data);
+t_buffer *serializar_t_syscall(t_syscall *data);
+void destruir_t_syscall(t_syscall *data);
+t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* param); 
+
+#endif
