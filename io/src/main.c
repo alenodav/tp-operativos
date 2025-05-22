@@ -38,11 +38,11 @@ int main(int argc, char* argv[]) {
 
         destruir_paquete(kernel_a_io);
 
-        log_info(logger, string_from_format("## PID: %i - Inicio de IO - Tiempo: %i", pid, tiempo_bloqueo));
+        log_info(logger, "## PID: %i - Inicio de IO - Tiempo: %i", pid, tiempo_bloqueo);
 
         usleep(tiempo_bloqueo);
 
-        log_info(logger, string_from_format("## PID: %i - Fin de IO", pid));
+        log_info(logger, "## PID: %i - Fin de IO", pid);
 
         t_buffer* buffer = buffer_create(sizeof(uint32_t));
         buffer_add_uint32(buffer, pid);

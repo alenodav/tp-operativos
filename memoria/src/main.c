@@ -3,6 +3,7 @@
 
 t_log *logger;
 t_dictionary *diccionario_procesos;
+char *memoria_usuario;
 pthread_mutex_t mutex_diccionario;
 
 int main(int argc, char *argv[])
@@ -11,6 +12,7 @@ int main(int argc, char *argv[])
     logger = crear_log(config, "memoria");
     log_debug(logger, "Config y Logger creados correctamente.");
 
+    memoria_usuario = string_repeat('-', atoi(config_get_string_value(config, "TAM_MEMORIA")));
     // Inicializo diccionario de procesos y su mutex
     diccionario_procesos = dictionary_create();
     pthread_mutex_init(&mutex_diccionario, NULL);
@@ -20,12 +22,12 @@ int main(int argc, char *argv[])
 
     // Thread para CPU;
     pthread_t thread_escucha_cpu;
-    pthread_create(&thread_escucha_cpu, NULL, handshake_cpu, fd_escucha_memoria);
+    pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, &fd_escucha_memoria);
     pthread_detach(thread_escucha_cpu);
 
     // Thread para atender a Kernel
     pthread_t thread_escucha_kernel;
-    pthread_create(&thread_escucha_kernel, NULL, handshake_kernel, fd_escucha_memoria);
+    pthread_create(&thread_escucha_kernel, NULL, (void*)handshake_kernel, &fd_escucha_memoria);
     pthread_detach(thread_escucha_kernel);
 
     getchar();
@@ -34,6 +36,7 @@ int main(int argc, char *argv[])
     config_destroy(config);
     liberar_diccionario(diccionario_procesos);
     pthread_mutex_destroy(&mutex_diccionario);
+    free(memoria_usuario);
     log_info(logger, "Finalizo el proceso.");
     log_destroy(logger);
 
@@ -137,11 +140,22 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
                 log_info(logger, "Proceso terminado - instrucción EXIT enviada");
             }
             break;
-        case READ:
+        case READ_MEMORIA:
             // TODO: Implementar lectura de memoria
+            cpu_read *parametros = deserializar_cpu_read(paquete->buffer);
+            char* retorno = string_substring(memoria_usuario,parametros->direccion,parametros->direccion + parametros->tamanio);
+            t_buffer *buffer_read = buffer_create(sizeof(uint32_t) + parametros->tamanio + 1);
+            buffer_add_uint32(buffer_read, parametros->tamanio + 1);
+            buffer_add_string(buffer_read, parametros->tamanio + 1, retorno);
+            t_paquete *paquete_read = crear_paquete(READ_MEMORIA, buffer_read);
+            enviar_paquete(paquete_read, cliente);
             break;
-        case WRITE:
+        case WRITE_MEMORIA:
             // TODO: Implementar escritura en memoria
+            cpu_write *parametros_write = deserializar_cpu_write(paquete->buffer);
+            for (int i = 0;i<string_length(parametros_write->datos);i++) {
+                memoria_usuario[parametros_write->direccion + i] = parametros_write->datos[i];
+            }
             break;
         default:
             log_error(logger, "Operación desconocida de CPU");
@@ -168,13 +182,12 @@ bool recibir_consulta_memoria(uint32_t fd_kernel)
 
     // creo buffer para leer el paquete con pid y tamaño que se me envio
     t_buffer *buffer = paquete->buffer;
-    uint32_t pid = buffer_read_uint32(buffer);
     uint32_t tamanio = buffer_read_uint32(buffer);
 
     // logueo
-    log_info(logger, "Recibo consulta de espacio para PID %d, tamaño %d", pid, tamanio);
+    log_info(logger, "Recibo consulta de espacio para tamaño %d", tamanio);
 
-    bool hay_espacio = verificar_espacio_memoria(pid, tamanio);
+    bool hay_espacio = verificar_espacio_memoria( tamanio);
 
     // preparo el paquete de respuesta--           --creo buffer y le asigno tamaño del bool  que devuelve verificar_espacio_memoria
     t_paquete *respuesta = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer_create(sizeof(bool)));
@@ -208,12 +221,11 @@ void recibir_instrucciones(uint32_t fd_kernel, uint32_t pid)
     destruir_paquete(paquete);
 }
 
-bool verificar_espacio_memoria(uint32_t pid, uint32_t tamanio)
+bool verificar_espacio_memoria(uint32_t tamanio)
 {
     uint32_t tamanio_memoria_default = 4096;
 
-    log_info(logger, "PID: %d - Tamaño Memoria Total: %d - Tamaño Solicitado: %d - Espacio Disponible: %d",
-             pid,
+    log_info(logger, "- Tamaño Memoria Total: %d - Tamaño Solicitado: %d - Espacio Disponible: %d",
              tamanio_memoria_default,
              tamanio,
              tamanio_memoria_default - tamanio);
@@ -278,7 +290,7 @@ struct_memoria_to_cpu *parsear_linea(char *linea)
         struct_memoria_to_cpu->parametros = string_duplicate("");
     }
 
-    string_iterate_lines(token, free);
+    string_iterate_lines(token, (void*)free);
     free(token);
 
     return struct_memoria_to_cpu;
@@ -317,9 +329,9 @@ void cargar_instrucciones(char *path_archivo, uint32_t pid)
 
 bool enviar_instruccion(uint32_t fd_cpu)
 {
-    t_buffer *buffer = recibir_paquete(fd_cpu);
-    uint32_t pid = buffer_read_uint32(buffer);
-    uint32_t pc = buffer_read_uint32(buffer);
+    t_paquete *paquete = recibir_paquete(fd_cpu);
+    uint32_t pid = buffer_read_uint32(paquete->buffer);
+    uint32_t pc = buffer_read_uint32(paquete->buffer);
 
     char *pid_str = string_itoa(pid);
     t_list *lista_instruccion_to_cpu = dictionary_get(diccionario_procesos, pid_str);
@@ -328,7 +340,7 @@ bool enviar_instruccion(uint32_t fd_cpu)
     if (lista_instruccion_to_cpu == NULL || pc >= list_size(lista_instruccion_to_cpu))
     {
         log_error(logger, "PID no encontrado o PC no valido");
-        buffer_destroy(buffer);
+        destruir_paquete(paquete);
         return false;
     }
 
@@ -336,14 +348,11 @@ bool enviar_instruccion(uint32_t fd_cpu)
 
     uint32_t tam_para = string_length(instruccion->parametros);
 
-    t_paquete *paquete = crear_paquete(FETCH, buffer_create(0));
-    buffer_add_uint8(paquete->buffer, instruccion->instruccion);
-    buffer_add_string(paquete->buffer, tam_para, instruccion->parametros);
+    t_paquete *paquete_retorno = crear_paquete(FETCH, buffer_create(0));
+    buffer_add_uint8(paquete_retorno->buffer, instruccion->instruccion);
+    buffer_add_string(paquete_retorno->buffer, tam_para, instruccion->parametros);
 
-    enviar_paquete(paquete, fd_cpu);
-
-    destruir_paquete(paquete);
-    buffer_destroy(buffer);
+    enviar_paquete(paquete_retorno, fd_cpu);
 
     return instruccion->instruccion == EXIT;
 }
@@ -352,7 +361,18 @@ bool enviar_instruccion(uint32_t fd_cpu)
 
 } */
 
-// nota: decirle a tomas que me mande el pid cuando me manda tambien el archivo en la funcion recibir_instrucciones, porque despues yo lo uso
-// para mandarlo al diccionario de una.
 
+cpu_read *deserializar_cpu_read(t_buffer *data) {
+    cpu_read *ret = malloc(sizeof(cpu_read));
+    ret->direccion = buffer_read_uint32(data);
+    ret->tamanio = buffer_read_uint32(data);
+    return ret;
+}
 
+cpu_write *deserializar_cpu_write(t_buffer *data) {
+    cpu_write *ret = malloc(sizeof(cpu_write));
+    ret->direccion = buffer_read_uint32(data);
+    ret->datos_length = buffer_read_uint32(data);
+    ret->datos = buffer_read_string(data, &ret->datos_length);
+    return ret;
+}
