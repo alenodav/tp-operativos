@@ -68,13 +68,13 @@ void iniciar_modulo() {
 
     archivos_instruccion = list_create();
 
-    sem_init(sem_largo_plazo, 0, 1);
-    sem_init(sem_cpus, 0, 1);
-    sem_init(sem_io, 0, 1);
-    sem_init(sem_execute, 0, 1);
-    sem_init(sem_corto_plazo, 0, 1);
-    sem_init(sem_ready, 0, 1);
-    sem_init(sem_blocked, 0, 1);
+    sem_init(&sem_largo_plazo, 0, 1);
+    sem_init(&sem_cpus, 0, 1);
+    sem_init(&sem_io, 0, 1);
+    sem_init(&sem_execute, 0, 1);
+    sem_init(&sem_corto_plazo, 0, 1);
+    sem_init(&sem_ready, 0, 1);
+    sem_init(&sem_blocked, 0, 1);
 
     inicio_modulo = false;
 
@@ -96,13 +96,13 @@ void finalizar_modulo() {
     list_destroy(io_list);
     list_destroy(io_queue_list);
 
-    sem_destroy(sem_largo_plazo);
-    sem_destroy(sem_cpus);
-    sem_destroy(sem_io);
-    sem_destroy(sem_execute);
-    sem_destroy(sem_corto_plazo);
-    sem_destroy(sem_ready);
-    sem_destroy(sem_blocked);
+    sem_destroy(&sem_largo_plazo);
+    sem_destroy(&sem_cpus);
+    sem_destroy(&sem_io);
+    sem_destroy(&sem_execute);
+    sem_destroy(&sem_corto_plazo);
+    sem_destroy(&sem_ready);
+    sem_destroy(&sem_blocked);
 
     liberar_conexion(fd_escucha_io);
 
@@ -194,7 +194,7 @@ void largo_plazo() {
 void planificar_fifo_largo_plazo() {
     while(1) {
         if (list_is_empty(archivos_instruccion)) {
-            sem_wait(sem_largo_plazo);
+            sem_wait(&sem_largo_plazo);
         }
         t_pcb *pcb = crear_proceso();
         bool consulta_memoria = consultar_a_memoria();
@@ -205,7 +205,7 @@ void planificar_fifo_largo_plazo() {
         }
         else {
             log_debug(logger, "## (%d) No hay espacio suficiente para inicializar el proceso", pcb->pid);
-            sem_wait(sem_largo_plazo);
+            sem_wait(&sem_largo_plazo);
         }
     }
 }
@@ -300,9 +300,9 @@ void pasar_ready(t_pcb *pcb, t_estado_metricas* metricas) {
     temporal_stop(metricas->MT);
     pcb->estado_actual = READY;
     pasar_por_estado(pcb, READY, NEW);
-    sem_wait(sem_ready);
+    sem_wait(&sem_ready);
     list_add(cola_ready, pcb);
-    sem_post(sem_ready);
+    sem_post(&sem_ready);
 }
 
 bool terminar_proceso_memoria (uint32_t pid) {
@@ -335,9 +335,9 @@ void terminar_proceso(uint32_t pid) {
     if (!consulta_memoria) {
         return;
     }
-    sem_wait(sem_execute);
+    sem_wait(&sem_execute);
     t_pcb *proceso = pcb_by_pid(cola_exec, pid);
-    sem_post(sem_execute);
+    sem_post(&sem_execute);
     t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
     temporal_stop(metricas_exec->MT);
     t_estado estado_anterior = proceso->estado_actual;
@@ -346,7 +346,7 @@ void terminar_proceso(uint32_t pid) {
     log_info(logger, "## (%d) - Finaliza el proceso", pid);
     loggear_metricas_estado(proceso);
     free(proceso);
-    sem_post(sem_largo_plazo);
+    sem_post(&sem_largo_plazo);
 
     return;
 }
@@ -427,9 +427,9 @@ void agregar_cpu_dispatch(uint32_t* socket) {
     cpu_agregar->identificador = identificador;
     cpu_agregar->socket_dispatch = *socket;
     cpu_agregar->estado = false;
-    sem_wait(sem_cpus);
+    sem_wait(&sem_cpus);
     list_add(cpu_list, cpu_agregar);
-    sem_post(sem_cpus);
+    sem_post(&sem_cpus);
     return;
 }
 
@@ -453,9 +453,9 @@ void agregar_cpu_interrupt(uint32_t* socket) {
     }
     enviar_handshake(*socket, "KERNEL");
     t_cpu *cpu_a_guardar = cpu_find_by_id(identificador);
-    sem_wait(sem_cpus);
+    sem_wait(&sem_cpus);
     cpu_a_guardar->socket_interrupt = *socket;
-    sem_post(sem_cpus);
+    sem_post(&sem_cpus);
     free(identificador);
     return;
 }
@@ -474,7 +474,7 @@ void administrar_dispositivos_io () {
     while (1) {
         pthread_t thread;
         uint32_t *socket_io = malloc(sizeof(uint32_t));
-        *socket_io = esperar_cliente(fd_escucha_cpu);
+        *socket_io = esperar_cliente(fd_escucha_io);
         pthread_create(&thread, NULL, (void*)agregar_io, socket_io);
         pthread_detach(thread);
     } 
@@ -498,13 +498,13 @@ void agregar_io (uint32_t *socket) {
         t_io_queue *io_queue_agregar = malloc(sizeof(t_io_queue));
         io_queue_agregar->id = identificador;
         io_queue_agregar->cola_procesos = queue_create();
-        sem_wait(sem_io);
+        sem_wait(&sem_io);
         list_add(io_queue_list, io_queue_agregar);
-        sem_post(sem_io);
+        sem_post(&sem_io);
     }
-    sem_wait(sem_io);
+    sem_wait(&sem_io);
     list_add(io_list, io_agregar);
-    sem_post(sem_io);
+    sem_post(&sem_io);
 }
 
 void ejecutar_io_syscall (uint32_t pid, char* id_io, uint32_t tiempo) {
@@ -513,25 +513,25 @@ void ejecutar_io_syscall (uint32_t pid, char* id_io, uint32_t tiempo) {
         terminar_proceso(pid);
         return;
     }
-    sem_wait(sem_execute);
+    sem_wait(&sem_execute);
     t_pcb *proceso = pcb_by_pid(cola_exec, pid);
-    sem_post(sem_execute);
+    sem_post(&sem_execute);
     t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
     temporal_stop(metricas_exec->MT);
     t_estado estado_anterior = proceso->estado_actual;
     proceso->estado_actual = BLOCKED;
     pasar_por_estado(proceso, BLOCKED, estado_anterior);
     log_info(logger, "## (%d) Bloqueado por IO: %s", pid, id_io);
-    sem_wait(sem_blocked);
+    sem_wait(&sem_blocked);
     list_add(cola_blocked, proceso);
-    sem_post(sem_blocked);
+    sem_post(&sem_blocked);
     kernel_to_io *io_enviar = malloc(sizeof(io_enviar));
     io_enviar->pid = pid;
     io_enviar->tiempo_bloqueo = tiempo;
     t_io_queue *io_queue_buscada = io_queue_find_by_id(id_io);
-    sem_wait(sem_io);
+    sem_wait(&sem_io);
     queue_push(io_queue_buscada->cola_procesos, io_enviar);
-    sem_post(sem_io);
+    sem_post(&sem_io);
     enviar_kernel_to_io(id_io);
 }
 
@@ -542,9 +542,9 @@ void enviar_kernel_to_io (char* id) {
         return;
     }
     t_io_queue *io_queue_buscada = io_queue_find_by_id(id);
-    sem_wait(sem_io);
+    sem_wait(&sem_io);
     kernel_to_io *params = queue_pop(io_queue_buscada->cola_procesos);
-    sem_post(sem_io);
+    sem_post(&sem_io);
     io_a_enviar->estado = true;
     io_a_enviar->proceso_ejecucion = params->pid;
     t_buffer *buffer = serializar_kernel_to_io(params);
@@ -560,9 +560,9 @@ void manejar_respuesta_io(t_io *io_espera) {
     if (paquete->codigo_operacion != IO) {
         log_error(logger, "(%d) Codigo de operacion incorrecto para IO", io_espera->proceso_ejecucion);
         terminar_proceso(io_espera->proceso_ejecucion);
-        sem_wait(sem_io);
+        sem_wait(&sem_io);
         list_remove_element(io_list, io_espera);
-        sem_post(sem_io);
+        sem_post(&sem_io);
         liberar_conexion(io_espera->socket);
         free(io_espera->identificador);
         free(io_espera);
@@ -632,7 +632,7 @@ void planificar_fifo_corto_plazo() {
         bool no_hay_proceso_ready = list_is_empty(cola_ready);
         t_cpu *cpu_a_enviar = list_find(cpu_list, find_cpu_libre);
         if (no_hay_proceso_ready || cpu_a_enviar == NULL) {
-            sem_wait(sem_corto_plazo);
+            sem_wait(&sem_corto_plazo);
             continue;
         }
         t_pcb *proceso_a_ejecutar = list_remove(cola_ready, 0);
@@ -655,9 +655,9 @@ void pasar_exec(t_pcb *pcb) {
     t_estado estado_anterior = pcb->estado_actual;
     pcb->estado_actual = EXEC;
     pasar_por_estado(pcb, EXEC, estado_anterior);
-    sem_wait(sem_execute);
+    sem_wait(&sem_execute);
     list_add(cola_exec, pcb);
-    sem_post(sem_execute);
+    sem_post(&sem_execute);
 }
 
 void enviar_kernel_to_cpu(uint32_t socket, t_pcb *pcb) {
@@ -759,7 +759,7 @@ void ejecutar_init_proc(uint32_t pid, char* nombre_archivo, uint32_t tamanio_pro
     archivo_inicial->archivo_length = string_length(archivo_inicial->archivo) + 1;
     archivo_inicial->tamanio = tamanio_proceso;
     list_add(archivos_instruccion, archivo_inicial);
-    sem_post(sem_largo_plazo);
+    sem_post(&sem_largo_plazo);
     t_pcb *pcb = pcb_by_pid(cola_exec, pid);
     enviar_kernel_to_cpu(cpu->socket_dispatch, pcb);
 }

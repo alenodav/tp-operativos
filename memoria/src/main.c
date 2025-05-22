@@ -22,12 +22,12 @@ int main(int argc, char *argv[])
 
     // Thread para CPU;
     pthread_t thread_escucha_cpu;
-    pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, &fd_escucha_memoria);
+    pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, fd_escucha_memoria);
     pthread_detach(thread_escucha_cpu);
 
     // Thread para atender a Kernel
     pthread_t thread_escucha_kernel;
-    pthread_create(&thread_escucha_kernel, NULL, (void*)handshake_kernel, &fd_escucha_memoria);
+    pthread_create(&thread_escucha_kernel, NULL, (void*)handshake_kernel, fd_escucha_memoria);
     pthread_detach(thread_escucha_kernel);
 
     getchar();
