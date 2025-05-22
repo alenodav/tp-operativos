@@ -138,11 +138,8 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             
             t_buffer* buffer = serializar_cpu_write(escribir);
 
-            t_paquete* paquete = crear_paquete(WRITE, buffer);
+            t_paquete* paquete = crear_paquete(WRITE_MEMORIA, buffer);
             enviar_paquete(paquete, fd_memoria);
-
-            buffer_destroy(buffer);
-            destruir_paquete(paquete);
 
             t_paquete* respuesta = recibir_paquete(fd_memoria);
             uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
@@ -173,11 +170,8 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             
             t_buffer* buffer = serializar_cpu_read(leer);
 
-            t_paquete* paquete = crear_paquete(READ,buffer);
+            t_paquete* paquete = crear_paquete(READ_MEMORIA,buffer);
             enviar_paquete(paquete,fd_memoria);
-
-            buffer_destroy(buffer);
-            destruir_paquete(paquete);
     
             t_paquete* respuesta = recibir_paquete(fd_memoria);
             uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
@@ -197,30 +191,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
         }
         case GOTO: {
             uint32_t nueva_direccion = atoi(instruccion_recibida->parametros);
-
-            log_debug(logger, "PID: %d - EXECUTE - GOTO - Nueva dirección: %d", pid, nueva_direccion);
-
-            t_buffer* buffer = buffer_create(sizeof(uint32_t));
-            buffer_add_uint32(buffer, nueva_direccion);
-
-            t_paquete* paquete = crear_paquete(GOTO, buffer);
-            enviar_paquete(paquete, fd_memoria);
-
-            t_paquete* respuesta = recibir_paquete(fd_memoria);
-            uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
-            char* mensaje = buffer_read_string(respuesta->buffer, &length_respuesta);
-            
-            if(string_equals_ignore_case(mensaje, "OK")) {
-                log_debug(logger, "PID: %d - GOTO completado exitosamente", pid);
-            } else {
-                log_error(logger, "PID: %d - Error en GOTO: %s", pid, mensaje);
-            }
-            
-            free(mensaje);
-            destruir_paquete(respuesta);
-
-            free(instruccion_recibida->parametros);
-            destruir_paquete(siguiente_instruccion);
+            pc = nueva_direccion;
             break;
         }
         case IO_SYSCALL: {
@@ -262,9 +233,6 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 
             t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_interrupt);
-
-            buffer_destroy(buffer);
-            destruir_paquete(paquete);
             break;
         }
         case EXIT: {
@@ -275,9 +243,6 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 
             t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_interrupt);
-
-            buffer_destroy(buffer);
-            destruir_paquete(paquete);
             break;
         }
         default:
