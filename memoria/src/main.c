@@ -170,6 +170,7 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
     return;
 }
 
+
 bool recibir_consulta_memoria(uint32_t fd_kernel)
 {
     t_paquete *paquete = recibir_paquete(fd_kernel);
@@ -238,8 +239,8 @@ kernel_to_memoria *deserializar_kernel_to_memoria(t_buffer *buffer)
 {
     kernel_to_memoria *data = malloc(sizeof(kernel_to_memoria));
 
-    data->archivo = buffer_read_string(buffer, &data->archivo_length);
     data->archivo_length = buffer_read_uint32(buffer);
+    data->archivo = buffer_read_string(buffer, &data->archivo_length);
     data->tamanio = buffer_read_uint32(buffer);
     return data;
 }
