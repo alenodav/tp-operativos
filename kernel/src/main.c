@@ -482,7 +482,7 @@ void administrar_dispositivos_io () {
 
 void agregar_io (uint32_t *socket) {
     char *identificador = recibir_handshake(*socket);
-    if (string_contains(identificador, "io")) {
+    if (!string_is_empty(identificador)) {
         log_debug(logger, "Handshake IO a Kernel OK.");
     }
     else {
