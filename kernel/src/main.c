@@ -494,6 +494,12 @@ void administrar_dispositivos_io () {
 void agregar_io (uint32_t *socket) {
     log_debug(logger, "Recibo conexion de io con fd=%d.", *socket);
     char *identificador = recibir_handshake(*socket);
+    if (!string_is_empty(identificador)) {
+        log_debug(logger, "Handshake IO a Kernel OK.");
+    }
+    else {
+        log_error(logger, "Handshake IO a Kernel error.");
+    }
     enviar_handshake(*socket, "KERNEL");
     log_debug(logger, "Agrego io id=%s", identificador);
     t_io *io_agregar = malloc(sizeof(t_io));
