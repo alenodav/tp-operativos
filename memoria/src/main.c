@@ -5,10 +5,13 @@ t_log *logger;
 t_dictionary *diccionario_procesos;
 char *memoria_usuario;
 pthread_mutex_t mutex_diccionario;
+sem_t cpu_handshake;
+sem_t kernel_handshake;
+t_config *config;
 
 int main(int argc, char *argv[])
 {
-    t_config *config = crear_config("memoria");
+    config = crear_config("memoria");
     logger = crear_log(config, "memoria");
     log_debug(logger, "Config y Logger creados correctamente.");
 
@@ -16,6 +19,8 @@ int main(int argc, char *argv[])
     // Inicializo diccionario de procesos y su mutex
     diccionario_procesos = dictionary_create();
     pthread_mutex_init(&mutex_diccionario, NULL);
+    sem_init(&cpu_handshake, 0, 0);
+    sem_init(&kernel_handshake, 0, 0);
     log_debug(logger, "Diccionario de procesos creado correctamente.");
 
     uint32_t fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
@@ -32,6 +37,8 @@ int main(int argc, char *argv[])
 
     getchar();
 
+    sem_destroy(&cpu_handshake);
+    sem_destroy(&kernel_handshake);
     liberar_conexion(fd_escucha_memoria);
     config_destroy(config);
     liberar_diccionario(diccionario_procesos);
@@ -63,10 +70,13 @@ void handshake_kernel(uint32_t fd_escucha_memoria)
 
     free(identificador);
     enviar_handshake(cliente, "MEMORIA");
-
+    liberar_conexion(cliente);
+    sem_post(&cpu_handshake);
+    sem_wait(&kernel_handshake);
     // Loop para atender Kernel
     while (1)
     {
+        cliente = esperar_cliente(fd_escucha_memoria);
         t_paquete *paquete = recibir_paquete(cliente);
         if (paquete == NULL)
         {
@@ -76,18 +86,17 @@ void handshake_kernel(uint32_t fd_escucha_memoria)
 
         switch (paquete->codigo_operacion)
         {
-        case CONSULTA_MEMORIA_PROCESO:
-            if (recibir_consulta_memoria(cliente))
-            {
-                // Si hay espacio, esperar las instrucciones
-                recibir_instrucciones(cliente, 0); // verificar si el pid viene en la estructura
-            }
-            break;
-        case TERMINAR_PROCESO:
-            break;
-        default:
-            log_error(logger, "Operación desconocida de Kernel");
-            break;
+            case SAVE_INSTRUCTIONS:
+                recibir_instrucciones(paquete);
+                break;
+            case CONSULTA_MEMORIA_PROCESO:
+                recibir_consulta_memoria(cliente, paquete);
+                break;
+            case TERMINAR_PROCESO:
+                break;
+            default:
+                log_error(logger, "Operación desconocida de Kernel");
+                break;
         }
 
         destruir_paquete(paquete);
@@ -100,6 +109,7 @@ void handshake_kernel(uint32_t fd_escucha_memoria)
 
 void handshake_cpu(uint32_t fd_escucha_memoria)
 {
+    sem_wait(&cpu_handshake);
     uint32_t cliente = esperar_cliente(fd_escucha_memoria);
 
     char *identificador = recibir_handshake(cliente);
@@ -118,7 +128,7 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
 
     free(identificador);
     enviar_handshake(cliente, "MEMORIA");
-
+    sem_post(&kernel_handshake);
     bool proceso_terminado = false;
     // Loop para atender peticiones de CPU
     while (!proceso_terminado)
@@ -171,40 +181,28 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
 }
 
 
-bool recibir_consulta_memoria(uint32_t fd_kernel)
+bool recibir_consulta_memoria(uint32_t fd_kernel, t_paquete *paquete)
 {
-    t_paquete *paquete = recibir_paquete(fd_kernel);
-
-    if (paquete->codigo_operacion != CONSULTA_MEMORIA_PROCESO)
-    {
-        log_error(logger, "Codigo de operacion incorrecto");
-        return false;
-    }
-
     // creo buffer para leer el paquete con pid y tamaño que se me envio
-    t_buffer *buffer = paquete->buffer;
-    uint32_t tamanio = buffer_read_uint32(buffer);
+    uint32_t tamanio = buffer_read_uint32(paquete->buffer);
 
     // logueo
-    log_info(logger, "Recibo consulta de espacio para tamaño %d", tamanio);
+    log_debug(logger, "Recibo consulta de espacio para tamaño %d", tamanio);
 
     bool hay_espacio = verificar_espacio_memoria( tamanio);
 
     // preparo el paquete de respuesta--           --creo buffer y le asigno tamaño del bool  que devuelve verificar_espacio_memoria
-    t_paquete *respuesta = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer_create(sizeof(bool)));
-    buffer_add_bool(respuesta->buffer, hay_espacio);
+    t_buffer *buffer = buffer_create(sizeof(bool));
+    buffer_add_bool(buffer, hay_espacio);
+    t_paquete *respuesta = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer);
+    
     enviar_paquete(respuesta, fd_kernel);
-
-    destruir_paquete(paquete);
-    destruir_paquete(respuesta);
 
     return hay_espacio;
 }
 
-void recibir_instrucciones(uint32_t fd_kernel, uint32_t pid)
+void recibir_instrucciones(t_paquete* paquete)
 {
-    t_paquete *paquete = recibir_paquete(fd_kernel);
-
     if (paquete->codigo_operacion != SAVE_INSTRUCTIONS)
     {
         log_error(logger, "Codigo de operacion incorrecto para guardar las instrucciones");
@@ -214,9 +212,12 @@ void recibir_instrucciones(uint32_t fd_kernel, uint32_t pid)
     kernel_to_memoria *kernelToMemoria = deserializar_kernel_to_memoria(paquete->buffer);
 
     log_info(logger, "Recibo archivo con instrucciones para PID %d", kernelToMemoria->pid);
+    char *path_archivo = config_get_string_value(config, "PATH_INSTRUCCIONES");
+    string_append(&path_archivo, kernelToMemoria->archivo);
 
-    cargar_instrucciones(kernelToMemoria->archivo, kernelToMemoria->pid);
+    cargar_instrucciones(path_archivo, kernelToMemoria->pid);
 
+    free(path_archivo);
     free(kernelToMemoria->archivo);
     free(kernelToMemoria);
     destruir_paquete(paquete);
@@ -272,6 +273,14 @@ struct_memoria_to_cpu *parsear_linea(char *linea)
     else if (string_equals_ignore_case(token[0], "EXIT"))
     {
         struct_memoria_to_cpu->instruccion = EXIT;
+    }
+    else if (string_equals_ignore_case(token[0], "IO"))
+    {
+        struct_memoria_to_cpu->instruccion = IO;
+    }
+    else if (string_equals_ignore_case(token[0], "INIT_PROC"))
+    {
+        struct_memoria_to_cpu->instruccion = INIT_PROC;
     }
     else
     {

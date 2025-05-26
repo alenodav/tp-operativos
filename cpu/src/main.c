@@ -5,6 +5,7 @@ t_config* config;
 uint32_t fd_dispatch;
 uint32_t fd_interrupt;
 uint32_t fd_memoria;
+sem_t sem_handshake;
 
 int main(int argc, char* argv[]){
     char* id_cpu = argv[1];
@@ -12,6 +13,7 @@ int main(int argc, char* argv[]){
     sprintf(log_filename, "cpu-%s.log", id_cpu);
     logger = log_create(log_filename, "CPU", true, LOG_LEVEL_DEBUG);
     log_debug(logger, "Logger de CPU id:%s creado.", id_cpu);
+    sem_init(&sem_handshake, 0, 0);
 
     config = crear_config("cpu");
 
@@ -47,9 +49,11 @@ void handshake_memoria(void* arg){
     }
 
     free(identificador);
+    sem_post(&sem_handshake);
 }
 
 void handshake_kernel(void* arg){
+    sem_wait(&sem_handshake);
     char* id_cpu = (char*)arg;
 
     // Conexion dispatch
@@ -75,6 +79,7 @@ void handshake_kernel(void* arg){
         log_error(logger, "Handshake Kernel INTERRUPT a CPU-%s error.", id_cpu);
     }
     free(identificador_interrupt);
+    recibir_proceso(NULL);
 }
 
 void recibir_proceso(void* _){

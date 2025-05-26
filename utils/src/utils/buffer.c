@@ -34,7 +34,7 @@ uint32_t buffer_read_uint32(t_buffer *buffer) {
 }
 
 void buffer_add_uint8(t_buffer *buffer, uint8_t data) {
-    buffer_add(buffer, &data, sizeof(uint32_t));
+    buffer_add(buffer, &data, sizeof(uint8_t));
 }
 
 uint8_t buffer_read_uint8(t_buffer *buffer) {

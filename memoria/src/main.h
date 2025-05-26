@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <utils/estructuras.h>
 #include <commons/collections/dictionary.h>
+#include <semaphore.h>
 
 extern t_log *logger;
 extern t_dictionary* diccionario_procesos;
@@ -33,8 +34,8 @@ typedef struct{
 } t_config_memoria;
 
 void leer_configuracion(char *);
-bool recibir_consulta_memoria(uint32_t);
-void recibir_instrucciones(uint32_t, uint32_t);
+bool recibir_consulta_memoria(uint32_t, t_paquete*);
+void recibir_instrucciones(t_paquete*);
 bool verificar_espacio_memoria(uint32_t);
 kernel_to_memoria* deserializar_kernel_to_memoria(t_buffer*);
 void cargar_instrucciones(char*, uint32_t pid_t);

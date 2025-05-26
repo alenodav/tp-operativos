@@ -9,6 +9,10 @@ int main(int argc, char* argv[]) {
     archivo_inicial->tamanio = atoi(argv[2]);
     list_add(archivos_instruccion, archivo_inicial);
 
+    handshake_memoria();
+
+    log_debug(logger, "Modulo iniciado correctamente.");
+
     pthread_t administrador_cpu_dispatch;
     pthread_create(&administrador_cpu_dispatch, NULL, (void*)administrar_cpus_dispatch, NULL);
     pthread_detach(administrador_cpu_dispatch);
@@ -26,7 +30,7 @@ int main(int argc, char* argv[]) {
     // pthread_detach(thread_io);  // Se separa la ejecución del thread de la del programa principal
 
     // pthread_t thread_memoria;
-    // pthread_create(&thread_memoria, NULL, handshake_memoria, config);
+    // pthread_create(&thread_memoria, NULL, (void*)handshake_memoria, config);
     // pthread_detach(thread_memoria); 
 
     // //sleep(1);
@@ -37,17 +41,19 @@ int main(int argc, char* argv[]) {
     // pthread_detach(thread_cpu);
 
     getchar(); // Para que el progrma no termine antes que los threads
-    inicio_modulo = true;
+    inicio_modulo = false;
     liberar_conexion(fd_escucha_cpu);
     liberar_conexion(fd_escucha_cpu_interrupt);
 
     pthread_t planificador_largo_plazo;
     pthread_create(&planificador_largo_plazo, NULL, (void*)largo_plazo, NULL);
-    pthread_join(planificador_largo_plazo, NULL);
+    pthread_detach(planificador_largo_plazo);
 
     pthread_t planificador_corto_plazo;
     pthread_create(&planificador_corto_plazo, NULL, (void*)corto_plazo, NULL);
-    pthread_join(planificador_corto_plazo, NULL);
+    pthread_detach(planificador_corto_plazo);
+
+    getchar();
 
     finalizar_modulo();
 
@@ -68,15 +74,15 @@ void iniciar_modulo() {
 
     archivos_instruccion = list_create();
 
-    sem_init(&sem_largo_plazo, 0, 1);
+    sem_init(&sem_largo_plazo, 0, 0);
     sem_init(&sem_cpus, 0, 1);
     sem_init(&sem_io, 0, 1);
     sem_init(&sem_execute, 0, 1);
-    sem_init(&sem_corto_plazo, 0, 1);
+    sem_init(&sem_corto_plazo, 0, 0);
     sem_init(&sem_ready, 0, 1);
     sem_init(&sem_blocked, 0, 1);
 
-    inicio_modulo = false;
+    inicio_modulo = true;
 
     fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));
     fd_escucha_cpu_interrupt = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_INTERRUPT"));
@@ -180,6 +186,7 @@ void largo_plazo() {
     //Seleccion de algoritmo
     char* algoritmo_config = config_get_string_value(config, "ALGORITMO_COLA_NEW");
     if (string_equals_ignore_case(algoritmo_config, "FIFO")) {
+        log_debug(logger, "Planificador de largo plazo con FIFO.");
         planificar_fifo_largo_plazo();
     }
     else if (string_equals_ignore_case(algoritmo_config, "PMCP")) {
@@ -194,6 +201,7 @@ void largo_plazo() {
 void planificar_fifo_largo_plazo() {
     while(1) {
         if (list_is_empty(archivos_instruccion)) {
+            log_debug(logger, "No hay archivo de instruccion.");
             sem_wait(&sem_largo_plazo);
         }
         t_pcb *pcb = crear_proceso();
@@ -257,6 +265,7 @@ t_pcb* crear_proceso() {
 
 bool consultar_a_memoria() {
     kernel_to_memoria *archivo = list_get(archivos_instruccion, 0);
+    log_debug(logger, "INICIO - consultar_a_memoria - archivo:%s", archivo->archivo);
     uint32_t tamanio_proceso = archivo->tamanio;
     uint32_t pid = archivo->pid;
     bool ret = false;
@@ -274,11 +283,13 @@ bool consultar_a_memoria() {
     }
     free(retorno);
     liberar_conexion(fd_conexion_memoria);
+    log_debug(logger, "FIN - consultar_a_memoria - retorno:%d", ret);
     return ret;
 }
 
 void enviar_instrucciones() {
     kernel_to_memoria *archivo = list_remove(archivos_instruccion, 0);
+    log_debug(logger, "INICIO - enviar_instrucciones - archivo:%s", archivo->archivo);
     uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
     t_buffer *buffer = serializar_kernel_to_memoria(archivo);
     t_paquete *consulta = crear_paquete(SAVE_INSTRUCTIONS, buffer);
@@ -303,6 +314,7 @@ void pasar_ready(t_pcb *pcb, t_estado_metricas* metricas) {
     sem_wait(&sem_ready);
     list_add(cola_ready, pcb);
     sem_post(&sem_ready);
+    sem_post(&sem_corto_plazo);
 }
 
 bool terminar_proceso_memoria (uint32_t pid) {
@@ -406,23 +418,22 @@ char* t_estado_to_string(t_estado estado) {
 
 void administrar_cpus_dispatch() {   
     while (inicio_modulo) {
+        log_debug(logger, "Espero conexiones de cpu dispatch con fd=%d.", fd_escucha_cpu);
         pthread_t thread;
         uint32_t *socket_cpu = malloc(sizeof(uint32_t));
         *socket_cpu = esperar_cliente(fd_escucha_cpu);
-        pthread_create(&thread, NULL, (void*)agregar_cpu_dispatch, socket_cpu);
-        pthread_detach(thread);
+        if (*socket_cpu != -1) {
+            pthread_create(&thread, NULL, (void*)agregar_cpu_dispatch, socket_cpu);
+            pthread_detach(thread);
+        }
     } 
 }
 
 void agregar_cpu_dispatch(uint32_t* socket) {
+    log_debug(logger, "Recibo conexion de cpu dispatch con fd=%d.", *socket);
     char *identificador = recibir_handshake(*socket);
-    if (string_contains(identificador, "cpu")) {
-        log_debug(logger, "Handshake CPU a Kernel OK.");
-    }
-    else {
-        log_error(logger, "Handshake CPU a Kernel error.");
-    }
     enviar_handshake(*socket, "KERNEL");
+    log_debug(logger, "Agrego cpu dispatch id=%s", identificador);
     t_cpu *cpu_agregar = malloc(sizeof(t_cpu));
     cpu_agregar->identificador = identificador;
     cpu_agregar->socket_dispatch = *socket;
@@ -435,23 +446,22 @@ void agregar_cpu_dispatch(uint32_t* socket) {
 
 void administrar_cpus_interrupt() {   
     while (inicio_modulo) {
+        log_debug(logger, "Espero conexiones de cpu interrupt con fd=%d.", fd_escucha_cpu_interrupt);
         pthread_t thread;
         uint32_t *socket_cpu = malloc(sizeof(uint32_t));
-        *socket_cpu = esperar_cliente(fd_escucha_cpu);
-        pthread_create(&thread, NULL, (void*)agregar_cpu_interrupt, socket_cpu);
-        pthread_detach(thread);
+        *socket_cpu = esperar_cliente(fd_escucha_cpu_interrupt);
+        if(*socket_cpu != -1) {
+            pthread_create(&thread, NULL, (void*)agregar_cpu_interrupt, socket_cpu);
+            pthread_detach(thread);
+        }
     } 
 }
 
 void agregar_cpu_interrupt(uint32_t* socket) {
+    log_debug(logger, "Recibo conexion de cpu interrupt con fd=%d.", *socket);
     char *identificador = recibir_handshake(*socket);
-    if (string_contains(identificador, "cpu")) {
-        log_debug(logger, "Handshake CPU a Kernel OK.");
-    }
-    else {
-        log_error(logger, "Handshake CPU a Kernel error.");
-    }
     enviar_handshake(*socket, "KERNEL");
+    log_debug(logger, "Agrego cpu interrupt id=%s", identificador);
     t_cpu *cpu_a_guardar = cpu_find_by_id(identificador);
     sem_wait(&sem_cpus);
     cpu_a_guardar->socket_interrupt = *socket;
@@ -472,6 +482,7 @@ t_cpu *cpu_find_by_id (char *id) {
 
 void administrar_dispositivos_io () {
     while (1) {
+        log_debug(logger, "Espero conexiones de io con fd=%d.", fd_escucha_io);
         pthread_t thread;
         uint32_t *socket_io = malloc(sizeof(uint32_t));
         *socket_io = esperar_cliente(fd_escucha_io);
@@ -481,14 +492,10 @@ void administrar_dispositivos_io () {
 }
 
 void agregar_io (uint32_t *socket) {
+    log_debug(logger, "Recibo conexion de io con fd=%d.", *socket);
     char *identificador = recibir_handshake(*socket);
-    if (string_contains(identificador, "io")) {
-        log_debug(logger, "Handshake IO a Kernel OK.");
-    }
-    else {
-        log_error(logger, "Handshake IO a Kernel error.");
-    }
     enviar_handshake(*socket, "KERNEL");
+    log_debug(logger, "Agrego io id=%s", identificador);
     t_io *io_agregar = malloc(sizeof(t_io));
     io_agregar->identificador = identificador;
     io_agregar->estado = false;
@@ -632,6 +639,7 @@ void planificar_fifo_corto_plazo() {
         bool no_hay_proceso_ready = list_is_empty(cola_ready);
         t_cpu *cpu_a_enviar = list_find(cpu_list, find_cpu_libre);
         if (no_hay_proceso_ready || cpu_a_enviar == NULL) {
+            log_debug(logger, "Planificador a corto plazo se queda esperando para mandar proceso a exec.");
             sem_wait(&sem_corto_plazo);
             continue;
         }
