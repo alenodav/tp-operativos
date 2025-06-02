@@ -85,8 +85,7 @@ uint32_t esperar_cliente(uint32_t socket_servidor)
         uint32_t socket_cliente;
         socket_cliente = accept(socket_servidor, NULL, NULL);
         if(socket_cliente == -1) {
-            log_error(logger, "Error al aceptar a un cliente: %s", strerror(errno));
-            abort();
+            log_warning(logger, "Error al aceptar a un cliente: %s", strerror(errno));
         }
         log_info(logger, "Se conecto un cliente.");
 

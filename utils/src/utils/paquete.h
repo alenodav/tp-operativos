@@ -21,7 +21,9 @@ typedef enum {
     FETCH,
     IO,
     CONSULTA_MEMORIA_PROCESO,
-    TERMINAR_PROCESO
+    TERMINAR_PROCESO, 
+    READ_MEMORIA,
+    WRITE_MEMORIA
 } t_operacion;
 
 typedef struct {
