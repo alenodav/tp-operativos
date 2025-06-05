@@ -243,7 +243,7 @@ void pasar_por_estado(t_pcb *pcb, t_estado estado, t_estado estado_anterior) {
         temporal_resume(estado_a_pasar->MT);
     }
     if (estado != NEW) {
-        log_info(logger, "## (%d) Pasa del estado %d al estado %d", pcb->pid, estado_anterior, estado);
+        log_info(logger, "## (%d) Pasa del estado %d al estado %d", pcb->pid, t_estado_to_string(estado_anterior), t_estado_to_string(estado));
     }
 }
 
@@ -650,8 +650,11 @@ void planificar_fifo_corto_plazo() {
             continue;
         }
         t_pcb *proceso_a_ejecutar = list_remove(cola_ready, 0);
+
         pasar_exec(proceso_a_ejecutar);
+
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
+        
         pthread_t respuesta_cpu; 
         pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,NULL);
         pthread_detach(respuesta_cpu);   
