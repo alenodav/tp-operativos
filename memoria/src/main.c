@@ -327,9 +327,13 @@ void cargar_instrucciones(char *path_archivo, uint32_t pid)
 
         struct_memoria_to_cpu *instruccion = parsear_linea(linea);
         list_add(lista_instrucciones, instruccion);
-    }
 
+        free(linea);
+        linea = NULL;
+        len = 0;
+    }
     free(linea);
+    
     fclose(archivo);
 
     char *pid_str = string_itoa(pid);
