@@ -32,6 +32,9 @@ typedef struct {
     uint32_t pc;
     t_list* metricas;
     t_estado estado_actual;
+    uint32_t tamanio_proceso;
+    uint32_t rafaga_estimada;
+    char* cpu_id;
 } t_pcb;
 
 typedef struct {
@@ -58,6 +61,9 @@ void finalizar_modulo();
 void escucha_io();
 void handshake_memoria();
 void escucha_cpu();
+
+//largo plazo
+
 void largo_plazo();
 void planificar_fifo_largo_plazo();
 t_estado_metricas *crear_metrica_estado(t_estado);
@@ -73,6 +79,11 @@ void terminar_proceso(uint32_t);
 t_pcb* pcb_by_pid(t_list*, uint32_t);
 void loggear_metricas_estado(t_pcb*);
 char* t_estado_to_string(t_estado);
+void planificar_pmcp_largo_plazo();
+bool es_mas_chico_que(void *un_pcb, void *otro_pcb);
+
+//corto plazo
+
 void administrar_cpus_dispatch();
 void agregar_cpu_dispatch(uint32_t*);
 void administrar_cpus_interrupt();
@@ -97,7 +108,13 @@ void atender_respuesta_cpu(t_cpu *);
 char *t_instruccion_to_string(t_instruccion ); 
 t_syscall *deserializar_t_syscall(t_buffer* );
 void ejecutar_init_proc(uint32_t , char* , uint32_t , t_cpu* ); 
-
+void planificar_sjf_corto_plazo();
+uint32_t estimar_sjf (t_pcb* pcb);
+bool comparar_rafagas (void* un_pcb, void* otro_pcb);
+void planificar_srt_corto_plazo();
+void* mayor_rafaga (void* un_pcb, void* otro_pcb);
+void interrumpir_proceso(t_pcb* proceso, t_cpu* cpu);
+kernel_to_cpu *deserializar_kernel_to_cpu(t_buffer* buffer); 
 
 t_log *logger;
 t_config* config;
@@ -105,6 +122,8 @@ uint32_t pid_counter;
 uint32_t fd_escucha_cpu;
 uint32_t fd_escucha_cpu_interrupt;
 uint32_t fd_escucha_io;
+float alfa; 
+uint32_t est_inicial;
 t_list *cola_new;
 t_list *cola_ready;
 t_list *cola_exec;

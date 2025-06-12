@@ -66,6 +66,7 @@ void iniciar_modulo() {
     log_debug(logger, "Config y Logger creados correctamente.");
 
     pid_counter = 0;
+    est_inicial = 0;
 
     cola_new = list_create();
     cola_ready = list_create();
@@ -182,6 +183,8 @@ void handshake_memoria() {
     return;
 }
 
+//LARGO PLAZO
+
 void largo_plazo() {
     //Seleccion de algoritmo
     char* algoritmo_config = config_get_string_value(config, "ALGORITMO_COLA_NEW");
@@ -190,7 +193,7 @@ void largo_plazo() {
         planificar_fifo_largo_plazo();
     }
     else if (string_equals_ignore_case(algoritmo_config, "PMCP")) {
-
+        planificar_pmcp_largo_plazo();
     }
     else {
         log_error(logger, "Algoritmo desconocido para planificador de largo plazo.");
@@ -243,7 +246,7 @@ void pasar_por_estado(t_pcb *pcb, t_estado estado, t_estado estado_anterior) {
         temporal_resume(estado_a_pasar->MT);
     }
     if (estado != NEW) {
-        log_info(logger, "## (%d) Pasa del estado %d al estado %d", pcb->pid, t_estado_to_string(estado_anterior), t_estado_to_string(estado));
+        log_info(logger, "## (%d) Pasa del estado %s al estado %s", pcb->pid, t_estado_to_string(estado_anterior), t_estado_to_string(estado));
     }
 }
 
@@ -256,6 +259,7 @@ t_pcb* crear_proceso() {
     agregar_metricas_estado(pcb);
     pasar_por_estado(pcb, NEW, NEW);
     pcb->estado_actual = NEW;
+    pcb->rafaga_estimada = est_inicial;
     list_add(cola_new, pcb);
     archivo->pid = pid_counter;
     pid_counter += 1;
@@ -310,7 +314,7 @@ t_buffer *serializar_kernel_to_memoria(kernel_to_memoria* archivo) {
 void pasar_ready(t_pcb *pcb, t_estado_metricas* metricas) {
     temporal_stop(metricas->MT);
     pcb->estado_actual = READY;
-    pasar_por_estado(pcb, READY, NEW);
+    pasar_por_estado(pcb, READY, metricas->estado);
     sem_wait(&sem_ready);
     list_add(cola_ready, pcb);
     sem_post(&sem_ready);
@@ -415,6 +419,36 @@ char* t_estado_to_string(t_estado estado) {
         break;
     }
 }
+
+void planificar_pmcp_largo_plazo() {
+    while(1) {
+        if (list_is_empty(archivos_instruccion)) {
+            log_debug(logger, "No hay archivo de instruccion.");
+            sem_wait(&sem_largo_plazo);
+        }
+        t_pcb *pcb = crear_proceso();
+        // Ordeno por mas chico, dejando en la posicion 0 al mas chico.
+        list_sort(cola_new, es_mas_chico_que);
+        bool consulta_memoria = consultar_a_memoria();
+        if (consulta_memoria) {
+            enviar_instrucciones();
+            list_remove(cola_new, 0);
+            pasar_ready(pcb, list_get(pcb->metricas, NEW));
+        }
+        else {
+            log_debug(logger, "## (%d) No hay espacio suficiente para inicializar el proceso", pcb->pid);
+            sem_wait(&sem_largo_plazo);
+        }
+    }
+}
+
+bool es_mas_chico_que(void *un_pcb, void *otro_pcb) {
+    t_pcb *un_pcb_cast = (t_pcb*) un_pcb;
+    t_pcb *otro_pcb_cast = (t_pcb*) otro_pcb;
+    return un_pcb_cast->tamanio_proceso <= otro_pcb_cast->tamanio_proceso;
+}
+
+//CORTO PLAZO
 
 void administrar_cpus_dispatch() {   
     while (inicio_modulo) {
@@ -631,8 +665,11 @@ void corto_plazo() {
     if (string_equals_ignore_case(algoritmo_config, "FIFO")) {
         planificar_fifo_corto_plazo();
     }
-    else if (string_equals_ignore_case(algoritmo_config, "PMCP")) {
-
+    else if (string_equals_ignore_case(algoritmo_config, "SJF")) {
+        planificar_sjf_corto_plazo();
+    }
+    else if (string_equals_ignore_case(algoritmo_config, "SRT")) {
+        planificar_srt_corto_plazo();
     }
     else {
         log_error(logger, "Algoritmo desconocido para planificador de corto plazo.");
@@ -779,4 +816,120 @@ void ejecutar_init_proc(uint32_t pid, char* nombre_archivo, uint32_t tamanio_pro
     sem_post(&sem_largo_plazo);
     t_pcb *pcb = pcb_by_pid(cola_exec, pid);
     enviar_kernel_to_cpu(cpu->socket_dispatch, pcb);
+}
+
+void planificar_sjf_corto_plazo() {
+    alfa = atof(config_get_string_value(config, "ALFA"));
+    est_inicial = atoi(config_get_string_value(config, "ESTIMACION_INICIAL"));
+    while (1) {
+        bool no_hay_proceso_ready = list_is_empty(cola_ready);
+        t_cpu *cpu_a_enviar = list_find(cpu_list, find_cpu_libre);
+        if (no_hay_proceso_ready || cpu_a_enviar == NULL) {
+            log_debug(logger, "Planificador a corto plazo se queda esperando para mandar proceso a exec.");
+            sem_wait(&sem_corto_plazo);
+            continue;
+        }
+        list_sort(cola_ready, comparar_rafagas);
+        t_pcb *proceso_a_ejecutar = list_remove(cola_ready, 0);
+
+        pasar_exec(proceso_a_ejecutar);
+
+        enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
+        
+        pthread_t respuesta_cpu; 
+        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,NULL);
+        pthread_detach(respuesta_cpu);   
+    }
+}
+
+uint32_t estimar_sjf (t_pcb* pcb) {
+    t_estado_metricas* metrica_exec = list_get(pcb->metricas, EXEC);
+    if (metrica_exec->MT == NULL) {
+        return (1-alfa)*pcb->rafaga_estimada;
+    }
+    else {
+        return alfa * temporal_gettime(metrica_exec->MT) + (1-alfa) * pcb->rafaga_estimada;
+    }
+}
+
+bool comparar_rafagas (void* un_pcb, void* otro_pcb) {
+    t_pcb *un_pcb_cast = (t_pcb*) un_pcb;
+    t_pcb *otro_pcb_cast = (t_pcb*) otro_pcb;
+    un_pcb_cast->rafaga_estimada = estimar_sjf(un_pcb_cast);
+    otro_pcb_cast->rafaga_estimada = estimar_sjf(otro_pcb_cast);
+    return un_pcb_cast->rafaga_estimada <= otro_pcb_cast->rafaga_estimada;
+}
+
+void planificar_srt_corto_plazo() {
+    alfa = atof(config_get_string_value(config, "ALFA"));
+    est_inicial = atoi(config_get_string_value(config, "ESTIMACION_INICIAL"));
+    while (1) {
+        bool no_hay_proceso_ready = list_is_empty(cola_ready);
+        t_cpu *cpu_a_enviar = list_find(cpu_list, find_cpu_libre);
+        if (no_hay_proceso_ready) {
+            log_debug(logger, "Planificador a corto plazo se queda esperando para mandar proceso a exec.");
+            sem_wait(&sem_corto_plazo);
+            continue;
+        }
+
+        list_sort(cola_ready, comparar_rafagas);
+        t_pcb *proceso_a_ejecutar = list_remove(cola_ready, 0);
+
+        if (cpu_a_enviar == NULL){
+            t_pcb *proceso_con_mayor_rafaga = list_get_maximum(cola_exec, mayor_rafaga);
+
+            proceso_a_ejecutar->rafaga_estimada = estimar_sjf(proceso_a_ejecutar);
+            proceso_con_mayor_rafaga->rafaga_estimada = estimar_sjf(proceso_con_mayor_rafaga);
+
+            if (proceso_con_mayor_rafaga->rafaga_estimada > proceso_a_ejecutar->rafaga_estimada) {
+                cpu_a_enviar = cpu_find_by_id(proceso_con_mayor_rafaga->cpu_id);
+                interrumpir_proceso(proceso_con_mayor_rafaga, cpu_a_enviar);
+            }
+            else {
+                log_debug(logger, "Planificador a corto plazo se queda esperando para mandar proceso a exec.");
+                sem_wait(&sem_corto_plazo);
+                continue;
+            }
+        }
+        
+        pasar_exec(proceso_a_ejecutar);
+
+        enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
+        
+        pthread_t respuesta_cpu; 
+        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,NULL);
+        pthread_detach(respuesta_cpu);   
+    }
+}
+
+void* mayor_rafaga (void* un_pcb, void* otro_pcb) {
+    t_pcb *un_pcb_cast = (t_pcb*) un_pcb;
+    t_pcb *otro_pcb_cast = (t_pcb*) otro_pcb;
+    un_pcb_cast->rafaga_estimada = estimar_sjf(un_pcb_cast);
+    otro_pcb_cast->rafaga_estimada = estimar_sjf(otro_pcb_cast);
+    return un_pcb_cast->rafaga_estimada >= otro_pcb_cast->rafaga_estimada ? un_pcb_cast : otro_pcb_cast;
+}
+
+void interrumpir_proceso(t_pcb* proceso, t_cpu* cpu) {
+    t_buffer *buffer = buffer_create(sizeof(uint32_t));
+
+    buffer_add_uint32(buffer, proceso->pid);
+    t_paquete *paquete = crear_paquete(INTERRUPT, buffer);
+
+    enviar_paquete(paquete, cpu->socket_interrupt);
+
+    t_paquete *respuesta = recibir_paquete(cpu->socket_interrupt);
+    kernel_to_cpu *proceso_cpu = deserializar_kernel_to_cpu(respuesta->buffer);
+    proceso->pc = proceso_cpu->pc;
+    pasar_ready(proceso, list_get(proceso->metricas, EXEC));
+
+    destruir_paquete(respuesta);
+    free(proceso_cpu);
+}
+
+kernel_to_cpu *deserializar_kernel_to_cpu(t_buffer* buffer) {
+    kernel_to_cpu *paquete_proceso = malloc(sizeof(kernel_to_cpu));
+    paquete_proceso->pid = buffer_read_uint32(buffer);
+    paquete_proceso->pc = buffer_read_uint32(buffer);
+    return paquete_proceso;
 }
