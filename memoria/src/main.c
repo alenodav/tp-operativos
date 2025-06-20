@@ -1,5 +1,5 @@
-#include <main.h>
-#include "liberacion.h"
+#include "../include/main.h"
+#include "../include/liberacion.h"
 
 t_log *logger;
 t_dictionary *diccionario_procesos;
@@ -8,14 +8,16 @@ pthread_mutex_t mutex_diccionario;
 sem_t cpu_handshake;
 sem_t kernel_handshake;
 t_config *config;
+t_config_memoria* cfg_memoria;
 
 int main(int argc, char *argv[])
 {
     config = crear_config("memoria");
     logger = crear_log(config, "memoria");
     log_debug(logger, "Config y Logger creados correctamente.");
+    //Leo el archivo de configuracion y la guardo en una variable global.
+    leer_configuracion(config);
 
-    memoria_usuario = string_repeat('-', atoi(config_get_string_value(config, "TAM_MEMORIA")));
     // Inicializo diccionario de procesos y su mutex
     diccionario_procesos = dictionary_create();
     pthread_mutex_init(&mutex_diccionario, NULL);
@@ -44,6 +46,7 @@ int main(int argc, char *argv[])
     liberar_diccionario(diccionario_procesos);
     pthread_mutex_destroy(&mutex_diccionario);
     free(memoria_usuario);
+
     log_info(logger, "Finalizo el proceso.");
     log_destroy(logger);
 
@@ -180,29 +183,24 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
     return;
 }
 
-
-bool recibir_consulta_memoria(uint32_t fd_kernel, t_paquete *paquete)
-{
+//Recibe  un proceso de kernel, con su tamaño, uso funcion verificar_espacio y si hay, devuelvo TRUE.
+bool recibir_consulta_memoria(uint32_t fd_kernel, t_paquete *paquete){
     // creo buffer para leer el paquete con pid y tamaño que se me envio
     uint32_t tamanio = buffer_read_uint32(paquete->buffer);
-
-    // logueo
     log_debug(logger, "Recibo consulta de espacio para tamaño %d", tamanio);
-
     bool hay_espacio = verificar_espacio_memoria( tamanio);
-
-    // preparo el paquete de respuesta--           --creo buffer y le asigno tamaño del bool  que devuelve verificar_espacio_memoria
+    // preparo el paquete de respuesta-creo buffer y le asigno tamaño del bool  que devuelve verificar_espacio_memoria
     t_buffer *buffer = buffer_create(sizeof(bool));
     buffer_add_bool(buffer, hay_espacio);
-    t_paquete *respuesta = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer);
-    
+    t_paquete *respuesta = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer);  
     enviar_paquete(respuesta, fd_kernel);
 
     return hay_espacio;
 }
 
-void recibir_instrucciones(t_paquete* paquete)
-{
+//Recibo las instrucciones si hubiese espacio, y las cargo --> cargar_instrucciones()
+void recibir_instrucciones(t_paquete* paquete){
+
     if (paquete->codigo_operacion != SAVE_INSTRUCTIONS)
     {
         log_error(logger, "Codigo de operacion incorrecto para guardar las instrucciones");
@@ -212,7 +210,7 @@ void recibir_instrucciones(t_paquete* paquete)
     kernel_to_memoria *kernelToMemoria = deserializar_kernel_to_memoria(paquete->buffer);
 
     log_info(logger, "Recibo archivo con instrucciones para PID %d", kernelToMemoria->pid);
-    char *path_archivo = config_get_string_value(config, "PATH_INSTRUCCIONES");
+    char *path_archivo = cfg_memoria->PATH_INSTRUCCIONES;
     string_append(&path_archivo, kernelToMemoria->archivo);
 
     cargar_instrucciones(path_archivo, kernelToMemoria->pid);
@@ -225,7 +223,7 @@ void recibir_instrucciones(t_paquete* paquete)
 
 bool verificar_espacio_memoria(uint32_t tamanio)
 {
-    uint32_t tamanio_memoria_default = 4096;
+    uint32_t tamanio_memoria_default = cfg_memoria->TAM_MEMORIA;
 
     log_info(logger, "- Tamaño Memoria Total: %d - Tamaño Solicitado: %d - Espacio Disponible: %d",
              tamanio_memoria_default,
@@ -246,11 +244,9 @@ kernel_to_memoria *deserializar_kernel_to_memoria(t_buffer *buffer)
     return data;
 }
 
-
-struct_memoria_to_cpu *parsear_linea(char *linea)
-{
+//Parsea linea por linea el archivo.
+struct_memoria_to_cpu *parsear_linea(char *linea){
     char **token = string_split(linea, " ");
-
     struct_memoria_to_cpu *struct_memoria_to_cpu = malloc(sizeof(struct_memoria_to_cpu));
     struct_memoria_to_cpu->parametros = NULL;
 
@@ -306,8 +302,10 @@ struct_memoria_to_cpu *parsear_linea(char *linea)
     return struct_memoria_to_cpu;
 }
 
-void cargar_instrucciones(char *path_archivo, uint32_t pid)
-{
+//Carga la instrucciones usando --> parsear_linea para "parsear" cada linea y poder guardarla en una lista.
+//Al final, se guardan las instrucciones en un diccionario clave: pid, valor: lista de instrucciones.
+void cargar_instrucciones(char *path_archivo, uint32_t pid){
+
     FILE *archivo = fopen(path_archivo, "r");
     if (!archivo)
     {
@@ -332,8 +330,8 @@ void cargar_instrucciones(char *path_archivo, uint32_t pid)
         linea = NULL;
         len = 0;
     }
+
     free(linea);
-    
     fclose(archivo);
 
     char *pid_str = string_itoa(pid);
@@ -341,8 +339,8 @@ void cargar_instrucciones(char *path_archivo, uint32_t pid)
     free(pid_str);
 }
 
-bool enviar_instruccion(uint32_t fd_cpu)
-{
+//Envia la instruccion a CPU y al final verifica si fue EXIT o no.
+bool enviar_instruccion(uint32_t fd_cpu){
     t_paquete *paquete = recibir_paquete(fd_cpu);
     uint32_t pid = buffer_read_uint32(paquete->buffer);
     uint32_t pc = buffer_read_uint32(paquete->buffer);
@@ -359,23 +357,30 @@ bool enviar_instruccion(uint32_t fd_cpu)
     }
 
     struct_memoria_to_cpu *instruccion = list_get(lista_instruccion_to_cpu, pc);
-
     uint32_t tam_para = string_length(instruccion->parametros);
-
     t_paquete *paquete_retorno = crear_paquete(FETCH, buffer_create(0));
     buffer_add_uint8(paquete_retorno->buffer, instruccion->instruccion);
     buffer_add_string(paquete_retorno->buffer, tam_para, instruccion->parametros);
-
     enviar_paquete(paquete_retorno, fd_cpu);
 
     return instruccion->instruccion == EXIT;
 }
 
-/* void leer_configuracion(char* config){
+void leer_configuracion(char* config){
+    cfg_memoria->PUERTO_ESCUCHA = config_get_string_value(config, "PUERTO_ESCUCHA");
+    cfg_memoria->TAM_MEMORIA = config_get_int_value(config, "TAM_MEMORIA");
+    cfg_memoria->TAM_PAGINA = config_get_int_value(config, "TAM_PAGINA");
+    cfg_memoria->ENTRADAS_POR_TABLA = config_get_int_value(config, "ENTRADAS_POR_TABLA");
+    cfg_memoria->CANTIDAD_NIVELES = config_get_int_value(config, "CANTIDAD_DE_NIVELES");    
+    cfg_memoria->RETARDO_MEMORIA = config_get_int_value(config, "RETARDO_MEMORIA");
+    cfg_memoria->PATH_SWAPFILE = config_get_string_value(config, "PATH_SWAPFILE");
+    cfg_memoria->RETARDO_SWAP = config_get_string_value(config, "RETARDO_SWAP");
+    cfg_memoria->LOG_LEVEL = config_get_string_value(config, "LOG_LEVEL");
+    cfg_memoria->DUMP_PATH = config_get_string_value(config, "DUMP_PATH");
+    cfg_memoria->PATH_INSTRUCCIONES = config_get_string_value(config, "PATH_INSTRUCCIONES"); 
+} 
 
-} */
-
-
+/* Funciones para deserializar el CPU_READ y CPU WRITE que teniamos preventivamente*/
 cpu_read *deserializar_cpu_read(t_buffer *data) {
     cpu_read *ret = malloc(sizeof(cpu_read));
     ret->direccion = buffer_read_uint32(data);
