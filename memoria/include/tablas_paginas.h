@@ -1,5 +1,5 @@
-#ifndef TABLAS_PAGINAS.H
-#define TABLAS_PAGINAS.H
+#ifndef TABLAS_PAGINAS_H
+#define TABLAS_PAGINAS_H
 
 #include<commons/collections/list.h>
 #include<stdio.h>
