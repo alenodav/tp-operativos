@@ -11,6 +11,7 @@
 #include <utils/log.h>
 #include <utils/estructuras.h>
 #include <semaphore.h>
+#include "../include/mmu.h"
 
 // Variables globales
 extern t_log* logger;
