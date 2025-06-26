@@ -83,4 +83,9 @@ typedef struct {
     char* parametros;
 } struct_memoria_to_cpu;
 
+typedef struct{
+    uint32_t tam_paginas;
+    uint32_t cantidad_niveles;
+} t_config_to_cpu;
+
 #endif // ESTRUCTURAS_H
