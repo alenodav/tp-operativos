@@ -44,13 +44,17 @@ t_paquete *recibir_paquete(uint32_t socket) {
     err = recv(socket, &(paquete->buffer->size), sizeof(uint32_t), 0);
     if(err == -1) {
         log_error(logger, "Error al recibir tamaño de buffer: %s", strerror(errno));
-        abort();
+        paquete->codigo_operacion = -1;
+        return paquete;
+        //abort();
     }
     paquete->buffer->stream = malloc(paquete->buffer->size);
     err = recv(socket, paquete->buffer->stream, paquete->buffer->size, 0);
     if(err == -1) {
         log_error(logger, "Error al recibir buffer: %s", strerror(errno));
-        abort();
+        paquete->codigo_operacion = -1;
+        return paquete;
+        //abort();
     }
     paquete->buffer->offset = 0;
 

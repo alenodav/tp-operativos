@@ -99,7 +99,7 @@ uint8_t recibir_operacion(uint32_t socket_cliente)
     err = recv(socket_cliente, &cod_op, sizeof(uint8_t), 0);
     if (err == -1) {
         log_error(logger, "Error al recibir codigo de operación: %s", strerror(errno));
-        abort();
+        //abort();
     }
     return cod_op;
 }
