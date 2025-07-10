@@ -72,16 +72,20 @@ void iniciar_modulo() {
     cola_ready = list_create();
     cola_blocked = list_create();
     cola_exec = list_create();
+    cola_susp_blocked = list_create();
+    cola_susp_ready = list_create();
 
     archivos_instruccion = list_create();
 
     sem_init(&sem_largo_plazo, 0, 0);
-    sem_init(&sem_cpus, 0, 1);
-    sem_init(&sem_io, 0, 1);
-    sem_init(&sem_execute, 0, 1);
+    sem_init(&mutex_cpus, 0, 1);
+    sem_init(&mutex_io, 0, 1);
+    sem_init(&mutex_execute, 0, 1);
     sem_init(&sem_corto_plazo, 0, 0);
-    sem_init(&sem_ready, 0, 1);
-    sem_init(&sem_blocked, 0, 1);
+    sem_init(&mutex_ready, 0, 1);
+    sem_init(&mutex_blocked, 0, 1);
+    sem_init(&mutex_susp_blocked, 0, 1);
+    sem_init(&mutex_susp_ready, 0, 1);
 
     inicio_modulo = true;
 
@@ -98,18 +102,20 @@ void finalizar_modulo() {
     list_destroy(cola_ready);
     list_destroy(cola_blocked);
     list_destroy(cola_exec);
+    list_destroy(cola_susp_blocked);
+    list_destroy(cola_susp_ready);
     list_destroy(archivos_instruccion);
     list_destroy(cpu_list);
     list_destroy(io_list);
     list_destroy(io_queue_list);
 
     sem_destroy(&sem_largo_plazo);
-    sem_destroy(&sem_cpus);
-    sem_destroy(&sem_io);
-    sem_destroy(&sem_execute);
+    sem_destroy(&mutex_cpus);
+    sem_destroy(&mutex_io);
+    sem_destroy(&mutex_execute);
     sem_destroy(&sem_corto_plazo);
-    sem_destroy(&sem_ready);
-    sem_destroy(&sem_blocked);
+    sem_destroy(&mutex_ready);
+    sem_destroy(&mutex_blocked);
 
     liberar_conexion(fd_escucha_io);
 
@@ -203,12 +209,28 @@ void largo_plazo() {
 
 void planificar_fifo_largo_plazo() {
     while(1) {
+        t_pcb *pcb = NULL;
+        bool consulta_memoria = false;
+        if (!list_is_empty(cola_susp_ready)) {
+            sem_wait(&mutex_susp_ready);
+            pcb = list_remove(cola_susp_ready, 0);
+            sem_post(&mutex_susp_ready);
+            consulta_memoria = consultar_a_memoria_by_pcb(pcb);
+            if (consulta_memoria) {
+                dessuspender_proceso(pcb);
+            }
+            else {
+                log_debug(logger, "## (%d) No hay espacio suficiente para des-suspender el proceso", pcb->pid);
+                sem_wait(&sem_largo_plazo);
+            }
+            continue;
+        }
         if (list_is_empty(archivos_instruccion)) {
             log_debug(logger, "No hay archivo de instruccion.");
             sem_wait(&sem_largo_plazo);
         }
-        t_pcb *pcb = crear_proceso();
-        bool consulta_memoria = consultar_a_memoria();
+        pcb = crear_proceso();
+        consulta_memoria = consultar_a_memoria();
         if (consulta_memoria) {
             enviar_instrucciones();
             list_remove(cola_new, 0);
@@ -219,6 +241,17 @@ void planificar_fifo_largo_plazo() {
             sem_wait(&sem_largo_plazo);
         }
     }
+}
+
+void dessuspender_proceso(t_pcb* pcb) {
+    log_debug(logger, "INICIO - enviar_instrucciones - pid:%d", pcb->pid);
+    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer *buffer = buffer_create(sizeof(uint32_t));
+    buffer_add_uint32(buffer, pcb->pid);
+    t_paquete *consulta = crear_paquete(DESSUSPENDER_PROCESO, buffer);
+    enviar_paquete(consulta, fd_conexion_memoria);
+    liberar_conexion(fd_conexion_memoria);
+    pasar_ready(pcb, list_get(pcb->metricas, SUSP_READY));
 }
 
 t_estado_metricas *crear_metrica_estado(t_estado estado) {
@@ -291,6 +324,29 @@ bool consultar_a_memoria() {
     return ret;
 }
 
+bool consultar_a_memoria_by_pcb(t_pcb *pcb) {
+    log_debug(logger, "INICIO - consultar_a_memoria_by_pcb - pid:%d", pcb->pid);
+    uint32_t tamanio_proceso = pcb->tamanio_proceso;
+    uint32_t pid = pcb->pid;
+    bool ret = false;
+    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer* buffer = buffer_create(sizeof(uint32_t));
+    buffer_add_uint32(buffer, tamanio_proceso);
+    t_paquete* paquete = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer);
+    enviar_paquete(paquete, fd_conexion_memoria);
+    t_paquete *retorno = recibir_paquete(fd_conexion_memoria);
+    if (retorno->codigo_operacion == CONSULTA_MEMORIA_PROCESO) {
+        ret = buffer_read_bool(paquete->buffer);
+    }
+    else {
+        log_error(logger, "## (%d) Codigo de operación incorrecto para consultar a memoria.", pid);
+    }
+    free(retorno);
+    liberar_conexion(fd_conexion_memoria);
+    log_debug(logger, "FIN - consultar_a_memoria - retorno:%d", ret);
+    return ret;
+}
+
 void enviar_instrucciones() {
     kernel_to_memoria *archivo = list_remove(archivos_instruccion, 0);
     log_debug(logger, "INICIO - enviar_instrucciones - archivo:%s", archivo->archivo);
@@ -315,9 +371,9 @@ void pasar_ready(t_pcb *pcb, t_estado_metricas* metricas) {
     temporal_stop(metricas->MT);
     pcb->estado_actual = READY;
     pasar_por_estado(pcb, READY, metricas->estado);
-    sem_wait(&sem_ready);
+    sem_wait(&mutex_ready);
     list_add(cola_ready, pcb);
-    sem_post(&sem_ready);
+    sem_post(&mutex_ready);
     sem_post(&sem_corto_plazo);
 }
 
@@ -351,9 +407,9 @@ void terminar_proceso(uint32_t pid) {
     if (!consulta_memoria) {
         return;
     }
-    sem_wait(&sem_execute);
-    t_pcb *proceso = pcb_by_pid(cola_exec, pid);
-    sem_post(&sem_execute);
+    sem_wait(&mutex_execute);
+    t_pcb *proceso = pcb_remove_by_pid(cola_exec, pid);
+    sem_post(&mutex_execute);
     t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
     temporal_stop(metricas_exec->MT);
     t_estado estado_anterior = proceso->estado_actual;
@@ -367,12 +423,20 @@ void terminar_proceso(uint32_t pid) {
     return;
 }
 
-t_pcb* pcb_by_pid(t_list* pcb_list, uint32_t pid) {
+t_pcb* pcb_remove_by_pid(t_list* pcb_list, uint32_t pid) {
     bool pid_equals(void *pcb) {
         t_pcb *pcb_cast = (t_pcb*)pcb;
         return pcb_cast->pid == pid;
     }
     return list_remove_by_condition(pcb_list, pid_equals);
+}
+
+t_pcb* pcb_get_by_pid(t_list* pcb_list, uint32_t pid) {
+    bool pid_equals(void *pcb) {
+        t_pcb *pcb_cast = (t_pcb*)pcb;
+        return pcb_cast->pid == pid;
+    }
+    return list_find(pcb_list, pid_equals);
 }
 
 void loggear_metricas_estado(t_pcb* proceso) {
@@ -422,14 +486,31 @@ char* t_estado_to_string(t_estado estado) {
 
 void planificar_pmcp_largo_plazo() {
     while(1) {
+        t_pcb *pcb = NULL;
+        bool consulta_memoria = false;
+        if (!list_is_empty(cola_susp_ready)) {
+            sem_wait(&mutex_susp_ready);
+            list_sort(cola_susp_ready, es_mas_chico_que);
+            pcb = list_remove(cola_susp_ready, 0);
+            sem_post(&mutex_susp_ready);
+            consulta_memoria = consultar_a_memoria_by_pcb(pcb);
+            if (consulta_memoria) {
+                dessuspender_proceso(pcb);
+            }
+            else {
+                log_debug(logger, "## (%d) No hay espacio suficiente para des-suspender el proceso", pcb->pid);
+                sem_wait(&sem_largo_plazo);
+            }
+            continue;
+        }
         if (list_is_empty(archivos_instruccion)) {
             log_debug(logger, "No hay archivo de instruccion.");
             sem_wait(&sem_largo_plazo);
         }
-        t_pcb *pcb = crear_proceso();
+        pcb = crear_proceso();
         // Ordeno por mas chico, dejando en la posicion 0 al mas chico.
         list_sort(cola_new, es_mas_chico_que);
-        bool consulta_memoria = consultar_a_memoria();
+        consulta_memoria = consultar_a_memoria();
         if (consulta_memoria) {
             enviar_instrucciones();
             list_remove(cola_new, 0);
@@ -472,9 +553,9 @@ void agregar_cpu_dispatch(uint32_t* socket) {
     cpu_agregar->identificador = identificador;
     cpu_agregar->socket_dispatch = *socket;
     cpu_agregar->estado = false;
-    sem_wait(&sem_cpus);
+    sem_wait(&mutex_cpus);
     list_add(cpu_list, cpu_agregar);
-    sem_post(&sem_cpus);
+    sem_post(&mutex_cpus);
     return;
 }
 
@@ -497,9 +578,9 @@ void agregar_cpu_interrupt(uint32_t* socket) {
     enviar_handshake(*socket, "KERNEL");
     log_debug(logger, "Agrego cpu interrupt id=%s", identificador);
     t_cpu *cpu_a_guardar = cpu_find_by_id(identificador);
-    sem_wait(&sem_cpus);
+    sem_wait(&mutex_cpus);
     cpu_a_guardar->socket_interrupt = *socket;
-    sem_post(&sem_cpus);
+    sem_post(&mutex_cpus);
     free(identificador);
     return;
 }
@@ -545,13 +626,13 @@ void agregar_io (uint32_t *socket) {
         t_io_queue *io_queue_agregar = malloc(sizeof(t_io_queue));
         io_queue_agregar->id = identificador;
         io_queue_agregar->cola_procesos = queue_create();
-        sem_wait(&sem_io);
+        sem_wait(&mutex_io);
         list_add(io_queue_list, io_queue_agregar);
-        sem_post(&sem_io);
+        sem_post(&mutex_io);
     }
-    sem_wait(&sem_io);
+    sem_wait(&mutex_io);
     list_add(io_list, io_agregar);
-    sem_post(&sem_io);
+    sem_post(&mutex_io);
 }
 
 void ejecutar_io_syscall (uint32_t pid, char* id_io, uint32_t tiempo) {
@@ -560,26 +641,32 @@ void ejecutar_io_syscall (uint32_t pid, char* id_io, uint32_t tiempo) {
         terminar_proceso(pid);
         return;
     }
-    sem_wait(&sem_execute);
-    t_pcb *proceso = pcb_by_pid(cola_exec, pid);
-    sem_post(&sem_execute);
+    sem_wait(&mutex_execute);
+    t_pcb *proceso = pcb_remove_by_pid(cola_exec, pid);
+    sem_post(&mutex_execute);
+
+    pasar_blocked(proceso, id_io);
+
+    kernel_to_io *io_enviar = malloc(sizeof(io_enviar));
+    io_enviar->pid = pid;
+    io_enviar->tiempo_bloqueo = tiempo;
+    t_io_queue *io_queue_buscada = io_queue_find_by_id(id_io);
+    sem_wait(&mutex_io);
+    queue_push(io_queue_buscada->cola_procesos, io_enviar);
+    sem_post(&mutex_io);
+    enviar_kernel_to_io(id_io);
+}
+
+void pasar_blocked(t_pcb* proceso, char* id_io) {
     t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
     temporal_stop(metricas_exec->MT);
     t_estado estado_anterior = proceso->estado_actual;
     proceso->estado_actual = BLOCKED;
     pasar_por_estado(proceso, BLOCKED, estado_anterior);
-    log_info(logger, "## (%d) Bloqueado por IO: %s", pid, id_io);
-    sem_wait(&sem_blocked);
+    log_info(logger, "## (%d) Bloqueado por IO: %s", proceso->pid, id_io);
+    sem_wait(&mutex_blocked);
     list_add(cola_blocked, proceso);
-    sem_post(&sem_blocked);
-    kernel_to_io *io_enviar = malloc(sizeof(io_enviar));
-    io_enviar->pid = pid;
-    io_enviar->tiempo_bloqueo = tiempo;
-    t_io_queue *io_queue_buscada = io_queue_find_by_id(id_io);
-    sem_wait(&sem_io);
-    queue_push(io_queue_buscada->cola_procesos, io_enviar);
-    sem_post(&sem_io);
-    enviar_kernel_to_io(id_io);
+    sem_post(&mutex_blocked);
 }
 
 void enviar_kernel_to_io (char* id) {
@@ -589,9 +676,9 @@ void enviar_kernel_to_io (char* id) {
         return;
     }
     t_io_queue *io_queue_buscada = io_queue_find_by_id(id);
-    sem_wait(&sem_io);
+    sem_wait(&mutex_io);
     kernel_to_io *params = queue_pop(io_queue_buscada->cola_procesos);
-    sem_post(&sem_io);
+    sem_post(&mutex_io);
     io_a_enviar->estado = true;
     io_a_enviar->proceso_ejecucion = params->pid;
     t_buffer *buffer = serializar_kernel_to_io(params);
@@ -607,18 +694,18 @@ void manejar_respuesta_io(t_io *io_espera) {
     if (paquete->codigo_operacion != IO) {
         log_error(logger, "(%d) Codigo de operacion incorrecto para IO", io_espera->proceso_ejecucion);
         terminar_proceso(io_espera->proceso_ejecucion);
-        sem_wait(&sem_io);
+        sem_wait(&mutex_io);
         list_remove_element(io_list, io_espera);
-        sem_post(&sem_io);
+        sem_post(&mutex_io);
         liberar_conexion(io_espera->socket);
         free(io_espera->identificador);
         free(io_espera);
         destruir_paquete(paquete);
         return;
     }
-    t_pcb *pcb = pcb_by_pid(cola_blocked, io_espera->proceso_ejecucion);
-    pasar_ready(pcb, list_get(pcb->metricas, BLOCKED));
-    log_info(logger, "## (%d) Finalizo IO y pasa a READY", io_espera->proceso_ejecucion);
+    
+    desbloquear_proceso(io_espera->proceso_ejecucion);
+
     io_espera->estado = false;
     io_espera->proceso_ejecucion = -1;
     t_io_queue *cola_io = io_queue_find_by_id(io_espera->identificador);
@@ -626,6 +713,32 @@ void manejar_respuesta_io(t_io *io_espera) {
         enviar_kernel_to_io(io_espera->identificador);
     }
     return;
+}
+
+void desbloquear_proceso(uint32_t pid) {
+    sem_wait(&mutex_blocked);
+    t_pcb *pcb = pcb_remove_by_pid(cola_blocked, pid);
+    sem_post(&mutex_blocked);
+    if (pcb == NULL) {
+        sem_wait(&mutex_susp_blocked);
+        pcb = pcb_remove_by_pid(cola_susp_blocked, pid);
+        sem_post(&mutex_susp_blocked);
+        pasar_susp_ready(pcb, list_get(pcb->metricas, SUSP_BLOCKED));
+    }
+    else {
+        pasar_ready(pcb, list_get(pcb->metricas, BLOCKED));
+    }
+    log_info(logger, "## (%d) Finalizo IO y pasa a READY", pid);
+}
+
+void pasar_susp_ready(t_pcb *pcb, t_estado_metricas* metricas) {
+    temporal_stop(metricas->MT);
+    pcb->estado_actual = SUSP_READY;
+    pasar_por_estado(pcb, SUSP_READY, metricas->estado);
+    sem_wait(&mutex_susp_ready);
+    list_add(cola_susp_ready, pcb);
+    sem_post(&mutex_susp_ready);
+    sem_post(&sem_largo_plazo);
 }
 
 t_list *io_filter_by_id (char *id) {
@@ -709,9 +822,9 @@ void pasar_exec(t_pcb *pcb) {
     t_estado estado_anterior = pcb->estado_actual;
     pcb->estado_actual = EXEC;
     pasar_por_estado(pcb, EXEC, estado_anterior);
-    sem_wait(&sem_execute);
+    sem_wait(&mutex_execute);
     list_add(cola_exec, pcb);
-    sem_post(&sem_execute);
+    sem_post(&mutex_execute);
 }
 
 void enviar_kernel_to_cpu(uint32_t socket, t_pcb *pcb) {
@@ -758,6 +871,7 @@ void atender_respuesta_cpu(t_cpu *cpu) {
             free(parametros);
             break;
         case DUMP_MEMORY:
+            ejecutar_dump_memory(syscall_recibida->pid);
             break; 
         case EXIT:
             terminar_proceso(syscall_recibida->pid);
@@ -814,8 +928,80 @@ void ejecutar_init_proc(uint32_t pid, char* nombre_archivo, uint32_t tamanio_pro
     archivo_inicial->tamanio = tamanio_proceso;
     list_add(archivos_instruccion, archivo_inicial);
     sem_post(&sem_largo_plazo);
-    t_pcb *pcb = pcb_by_pid(cola_exec, pid);
+    t_pcb *pcb = pcb_get_by_pid(cola_exec, pid);
     enviar_kernel_to_cpu(cpu->socket_dispatch, pcb);
+}
+
+void ejecutar_dump_memory(uint32_t pid) {
+    log_debug(logger, "INICIO - ejecutar_dump_memory - pid:%d", pid);
+    sem_wait(&mutex_execute);
+    t_pcb* proceso = pcb_remove_by_pid(cola_exec, pid);
+    sem_post(&mutex_execute);
+
+    pthread_t verificar_suspension; 
+    pthread_create(&verificar_suspension,NULL,(void*)verificar_tiempo_suspension,(void*)proceso);
+    pthread_detach(verificar_suspension);  
+
+    pasar_blocked(proceso, "DUMP_MEMORY");
+
+    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer *buffer = buffer_create(sizeof(uint32_t));
+    buffer_add_uint32(buffer, pid);
+    t_paquete *paquete = crear_paquete(DUMP_MEMORY_SYSCALL, buffer);
+    enviar_paquete(paquete, fd_conexion_memoria);
+
+    t_paquete* respuesta = recibir_paquete(fd_conexion_memoria);
+    if (respuesta->codigo_operacion != DUMP_MEMORY_SYSCALL) {
+        log_debug(logger, "ERROR - ejecutar_dump_memory - codop incorrecto - pid:%d", pid);
+        terminar_proceso(pid);
+        liberar_conexion(fd_conexion_memoria);
+        return;
+    }
+    bool confirmacion = buffer_read_bool(respuesta->buffer);
+    if (!confirmacion) {
+        log_debug(logger, "ERROR - ejecutar_dump_memory - pid:%d", pid);
+        terminar_proceso(pid);
+        liberar_conexion(fd_conexion_memoria);
+        return;
+    }
+    liberar_conexion(fd_conexion_memoria);
+    log_debug(logger, "FIN - ejecutar_dump_memory - pid:%d", pid);
+    desbloquear_proceso(pid);
+}
+
+void verificar_tiempo_suspension(t_pcb *proceso) {
+    uint64_t tiempo_suspension = config_get_long_value(config, "TIEMPO_SUSPENSION");
+    usleep(tiempo_suspension);
+    if (proceso->estado_actual == BLOCKED) {
+        suspender_proceso(proceso);
+    }
+}
+
+void suspender_proceso(t_pcb *proceso) {
+    sem_wait(&mutex_blocked);
+    list_remove_element(cola_blocked, proceso);
+    sem_post(&mutex_blocked);
+    pasar_susp_blocked(proceso);
+
+    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer *buffer = buffer_create(sizeof(uint32_t));
+    buffer_add_uint32(buffer, proceso->pid);
+    t_paquete *paquete = crear_paquete(SUSPENDER_PROCESO, buffer);
+    enviar_paquete(paquete, fd_conexion_memoria);
+    liberar_conexion(fd_conexion_memoria);
+
+    sem_post(&sem_largo_plazo);
+}
+
+void pasar_susp_blocked(t_pcb *pcb) {
+    t_estado_metricas *metrica_blocked = list_get(pcb->metricas, BLOCKED);
+    temporal_stop(metrica_blocked->MT);
+    t_estado estado_anterior = pcb->estado_actual;
+    pcb->estado_actual = SUSP_BLOCKED;
+    pasar_por_estado(pcb, SUSP_BLOCKED, estado_anterior);
+    sem_wait(&mutex_susp_blocked);
+    list_add(cola_exec, pcb);
+    sem_post(&mutex_susp_blocked);
 }
 
 void planificar_sjf_corto_plazo() {
