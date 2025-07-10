@@ -1108,6 +1108,7 @@ void interrumpir_proceso(t_pcb* proceso, t_cpu* cpu) {
     kernel_to_cpu *proceso_cpu = deserializar_kernel_to_cpu(respuesta->buffer);
     proceso->pc = proceso_cpu->pc;
     pasar_ready(proceso, list_get(proceso->metricas, EXEC));
+    log_info(logger, "## (%d) - Desalojado por algoritmo SJF/SRT", proceso->pid);
 
     destruir_paquete(respuesta);
     free(proceso_cpu);
