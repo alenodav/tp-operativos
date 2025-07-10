@@ -14,6 +14,7 @@ int main(int argc, char* argv[]){
     logger = log_create(log_filename, "CPU", true, LOG_LEVEL_DEBUG);
     log_debug(logger, "Logger de CPU id:%s creado.", id_cpu);
     sem_init(&sem_handshake, 0, 0);
+    interrupcion = false;
 
     config = crear_config("cpu");
 
@@ -79,6 +80,7 @@ void handshake_kernel(void* arg){
         log_error(logger, "Handshake Kernel INTERRUPT a CPU-%s error.", id_cpu);
     }
     free(identificador_interrupt);
+
     recibir_proceso(NULL);
 }
 
@@ -93,6 +95,10 @@ void recibir_proceso(void* _){
         log_debug(logger, "Recibido PID: %d - PC: %d", paquete_proceso->pid, paquete_proceso->pc);
 
         destruir_paquete(paquete);
+
+        pthread_t check_interrupt_thread;
+        pthread_create(&check_interrupt_thread, NULL, (void*)check_interrupt, &(paquete_proceso->pid));
+        pthread_detach(check_interrupt_thread);
 
         // FETCH a memoria
         solicitar_instruccion(paquete_proceso);
@@ -125,8 +131,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 
     switch (instruccion_recibida->instruccion) {
         case NOOP:
-           log_debug(logger, "PID: %d - EXECUTE - NOOP", pid);
-            usleep(1000);
+            log_debug(logger, "PID: %d - EXECUTE - NOOP", pid);
             log_debug(logger, "PID: %d - NOOP completado", pid);
 
             free(instruccion_recibida->parametros);
@@ -259,16 +264,17 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             pc++;
         }
 
+        if (interrupcion) {
+            interrupcion = false;
+            interrumpir_proceso(pid, pc);
+            break;
+        }
+
     } while(instruccion_recibida->instruccion != EXIT || instruccion_recibida->instruccion != INIT_PROC || instruccion_recibida->instruccion != DUMP_MEMORY || instruccion_recibida->instruccion != IO_SYSCALL);
     
     
     free(instruccion_recibida->parametros);
     destruir_paquete(siguiente_instruccion);
-
-
-    
-    // Check Interrupt de kernel - Se comenta para segundo checkpoint ya que no hace falta verificar por interrupciones
-    //check_interrupt(pid);
 }
 
 t_buffer *serializar_cpu_write(cpu_write *data) {
@@ -307,24 +313,31 @@ t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* param) {
     return ret;
 }
 
-void check_interrupt(u_int32_t pid) {
-    t_paquete* interrupcion = recibir_paquete(fd_interrupt);
-    if(interrupcion != NULL) {
-        uint32_t pid_interrupcion = buffer_read_uint32(interrupcion->buffer);
-        if(pid_interrupcion == pid) {
-            log_debug(logger, "PID: %d - Interrupción recibida del kernel", pid);
-            t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2);
-            buffer_add_uint32(buffer, pid);
-            //buffer_add_uint32(buffer, pc);
-            
-            t_paquete* respuesta = crear_paquete(INTERRUPT, buffer);
-            enviar_paquete(respuesta, fd_interrupt);
-
-            buffer_destroy(buffer);
-            destruir_paquete(respuesta);
-        } else {
-            log_debug(logger, "PID: %d - Interrupción descartada (para PID: %d)", pid, pid_interrupcion);
+void check_interrupt(uint32_t pid) {
+    t_paquete* paquete = recibir_paquete(fd_interrupt);
+    if(paquete != NULL) {
+        if (paquete->codigo_operacion == INTERRUPT) {
+            uint32_t pid_interrupcion = buffer_read_uint32(paquete->buffer);
+            if(pid_interrupcion == pid) {
+                interrupcion = true;
+            }
+            else {
+                log_debug(logger, "PID: %d - Interrupción descartada (para PID: %d)", pid, pid_interrupcion);
+            }
+        } 
+        else {
+            log_debug(logger, "Codop incorrecto para interrupcion.");
         }
-        destruir_paquete(interrupcion);
     }
+    destruir_paquete(paquete);
+}
+
+void interrumpir_proceso(uint32_t pid, uint32_t pc) {
+    log_debug(logger, "PID: %d - Interrupción recibida del kernel", pid);
+    t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2);
+    buffer_add_uint32(buffer, pid);
+    buffer_add_uint32(buffer, pc);
+            
+    t_paquete* respuesta = crear_paquete(INTERRUPT, buffer);
+    enviar_paquete(respuesta, fd_interrupt);
 }

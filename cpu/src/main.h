@@ -19,6 +19,7 @@ extern t_config* config;
 extern uint32_t fd_dispatch;
 extern uint32_t fd_interrupt;
 extern uint32_t fd_memoria;
+bool interrupcion;
 
 void handshake_memoria(void*);
 void handshake_kernel(void*);
@@ -29,5 +30,7 @@ t_buffer *serializar_cpu_read(cpu_read *data);
 t_buffer *serializar_t_syscall(t_syscall *data);
 void destruir_t_syscall(t_syscall *data);
 t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* param); 
+void check_interrupt(uint32_t pid);
+void interrumpir_proceso(uint32_t pid, uint32_t pc);
 
 #endif
