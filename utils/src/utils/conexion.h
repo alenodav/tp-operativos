@@ -1,3 +1,5 @@
+#ifndef CONEXION_H
+#define CONEXION_H
 #include <stdio.h>
 #include <stdlib.h>
 #include <commons/txt.h>
@@ -25,3 +27,5 @@ uint8_t recibir_operacion(uint32_t socket_cliente);
 
 //Inicia un servidor en el puerto especificado
 uint32_t iniciar_servidor(char* puerto);
+
+#endif

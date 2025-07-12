@@ -1,3 +1,5 @@
+#ifndef PAQUETE_H
+#define PAQUETE_H
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
@@ -56,3 +58,4 @@ char* recibir_handshake(uint32_t fd_conexion);
 void enviar_handshake(uint32_t fd_conexion, char* identificador);
 
 
+#endif

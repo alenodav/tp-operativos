@@ -7,16 +7,16 @@ void* crear_espacio_de_memoria(){
     return mp;
 }
 
-void* leer_de_memoria(void* memoria, uint32_t marco, uint32_t desplazamiento, uint32_t size){
+void* leer_de_memoria(uint32_t direccion_fisica, uint32_t size){
     void* contenido = malloc(size); 
-    memcpy(contenido, memoria + (marco*memoria_cfg->TAM_PAGINA) + desplazamiento);
+    memcpy(contenido, memoria_principal->datos + direccion_fisica, size);
 
     return contenido;   
 }
 
-void* escribir_en_memoria(void* memoria, void* contenido, uint32_t marco, uint32_t desplazamiento, uint32_t size){
-    uint32_t offset = (marco * memoria_cfg->TAM_PAGINA) + desplazamiento; //direccion fisica dentro del bloque de memoria
-    memcpy(memoria + offset, contenido, size); //copia el contenido a la memoria
+bool escribir_en_memoria(uint32_t direccion_fisica, uint32_t size, void* contenido){ //direccion fisica dentro del bloque de memoria
+    memcpy(memoria_principal->datos + direccion_fisica, contenido, size); //copia el contenido a la memoria
+    return true;
 }
 
 

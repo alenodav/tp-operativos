@@ -72,10 +72,6 @@ typedef struct {
     uint32_t tamanio;
 } cpu_read;
 
-typedef struct {
-    char* data;
-    uint32_t data_length;
-} t_memoria;
 
 typedef struct {
     t_instruccion instruccion;

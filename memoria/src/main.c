@@ -29,12 +29,12 @@ int main(int argc, char *argv[])
 
     // Thread para CPU;
     pthread_t thread_escucha_cpu;
-    pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, fd_escucha_memoria);
+    pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, &fd_escucha_memoria);
     pthread_detach(thread_escucha_cpu);
 
     // Thread para atender a Kernel
     pthread_t thread_escucha_kernel;
-    pthread_create(&thread_escucha_kernel, NULL, (void*)handshake_kernel, fd_escucha_memoria);
+    pthread_create(&thread_escucha_kernel, NULL, (void*)handshake_kernel, &fd_escucha_memoria);
     pthread_detach(thread_escucha_kernel);
 
     getchar();
@@ -366,7 +366,7 @@ bool enviar_instruccion(uint32_t fd_cpu){
     return instruccion->instruccion == EXIT;
 }
 
-void leer_configuracion(char* config){
+void leer_configuracion(t_config* config){
     cfg_memoria->PUERTO_ESCUCHA = config_get_string_value(config, "PUERTO_ESCUCHA");
     cfg_memoria->TAM_MEMORIA = config_get_int_value(config, "TAM_MEMORIA");
     cfg_memoria->TAM_PAGINA = config_get_int_value(config, "TAM_PAGINA");
