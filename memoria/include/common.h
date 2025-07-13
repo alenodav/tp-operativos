@@ -87,7 +87,9 @@ cpu_read *deserializar_cpu_read(t_buffer *data);
 cpu_write *deserializar_cpu_write(t_buffer *data);
 
 void* leer_pagina_completa(uint32_t direccion_fisica);
+bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina);
 
 int obtener_marco_libre();
+void liberar_marco(int marco);
 
 #endif

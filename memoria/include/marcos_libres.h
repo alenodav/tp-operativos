@@ -7,6 +7,6 @@
 void inicializar_bitmap(int cantidad_frames);
 bool hay_marcos_libres();
 
-void liberar_marco(int marco);
+
 void destruir_bitmap();
 #endif
