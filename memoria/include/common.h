@@ -24,8 +24,9 @@ void handshake_cpu(uint32_t);
 
 
 typedef struct{
-    uint32_t pid;
+    uint32_t tamanio;
     t_list* lista_instrucciones;
+    t_metricas* lista_metricas;
 } t_proceso;
 
 typedef struct t_memoria{

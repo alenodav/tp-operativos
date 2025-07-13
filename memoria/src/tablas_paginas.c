@@ -54,47 +54,6 @@ void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint
     }
 }
 
-// t_tablas_paginas* inicializar_tabla_paginas(uint32_t pid){
-//     t_tablas_paginas *tablas_del_pid = malloc(sizeof(t_tablas_paginas));
-//     tablas_del_pid->pid = pid;
-//     t_list* niveles = list_create();
-//     for (int i = 0; i < memoria_cfg->CANTIDAD_NIVELES; i++) {
-//         int cant_tablas = pow(memoria_cfg->ENTRADAS_POR_TABLA,i);
-//         int nivel = i + 1;
-//         t_tabla *struct_nivel = malloc(sizeof(t_tabla));
-//         struct_nivel->cant_tablas = cant_tablas;
-//         struct_nivel->nivel = nivel;
-//         struct_nivel->tablas = list_create();
-//         for (int k = 0; k < cant_tablas; k++) {
-//             t_tabla* tabla_agregar = malloc(sizeof(t_tabla));
-//             list_add(struct_nivel->tablas, tabla_agregar);
-//         }
-//         list_add(niveles, struct_nivel);
-//     }
-//     for (int i = 0; i < memoria_cfg->CANTIDAD_NIVELES; i++) {
-//         if (i + 1 == memoria_cfg->CANTIDAD_NIVELES) {
-//             asignar_marcos();
-//         }
-//         else {
-//             t_tabla *nivel_proximo = list_get(niveles, i+1);
-//             t_tabla *nivel_actual = list_get(niveles, i);
-//             for (int tabla = 0; tabla < nivel_actual->cant_tablas; tabla++) {
-//                 for (int entrada = 0; entrada < memoria_cfg->ENTRADAS_POR_TABLA; entrada++) {
-//                     t_list* tabla_agregar = list_get(nivel_proximo->tablas, entrada);
-//                     list_add_in_index(list_get(nivel_actual->tablas, tabla), entrada, tabla_agregar);
-//                 }
-//             }
-//         }
-//     }
-//     inicializar_tabla_de_paginas
-//     tablas_del_pid->t_tablas = niveles;
-//     return tablas_del_pid;
-// }
-
-// void asignar_marcos(t_list *tablas) {
-
-// }
-
 uint32_t devolver_marco(tabla_paginas* tabla_actual, uint32_t* indices, uint32_t nivel, t_metricas *metricas_proceso) {
     uint32_t marco = -1;
     usleep(memoria_cfg->RETARDO_MEMORIA);

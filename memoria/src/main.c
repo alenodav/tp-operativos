@@ -10,6 +10,8 @@ sem_t kernel_handshake;
 t_config *config;
 t_config_memoria* cfg_memoria;
 
+t_proceso* proceso;
+
 int main(int argc, char *argv[])
 {
     config = crear_config("memoria");
@@ -91,6 +93,18 @@ void handshake_kernel(uint32_t fd_escucha_memoria)
         {
             case SAVE_INSTRUCTIONS:
                 recibir_instrucciones(paquete);
+                //si guardo las instrucciones signifca que "admiti" un proceso entonces creo las tablas.
+                int tam_diccionario = dictionary_size(diccionario_procesos);
+                t_list* keys = list_create();
+                keys = dictionary_keys(diccionario_procesos);
+                t_proceso* proceso_aux = dictionary_get(diccionario_procesos, keys[tam_diccionario]);
+                uint32_t tam_proceso_aux = proceso_aux->tamanio;
+
+                tablas_por_pid* tabla_proceso = crear_tabla_raiz(keys[tam_diccionario], tam_proceso_aux);
+                asignar_marcos(tabla_proceso->tabla_raiz ,tam_proceso_aux, 1, tabla_proceso->marcos, 0);
+
+                list_destroy(keys);
+
                 break;
             case CONSULTA_MEMORIA_PROCESO:
                 recibir_consulta_memoria(cliente, paquete);
@@ -195,6 +209,9 @@ bool recibir_consulta_memoria(uint32_t fd_kernel, t_paquete *paquete){
     t_paquete *respuesta = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer);  
     enviar_paquete(respuesta, fd_kernel);
 
+    if(hay_espacio)
+        proceso->tamanio = tamanio;
+
     return hay_espacio;
 }
 
@@ -212,6 +229,8 @@ void recibir_instrucciones(t_paquete* paquete){
     log_info(logger, "Recibo archivo con instrucciones para PID %d", kernelToMemoria->pid);
     char *path_archivo = cfg_memoria->PATH_INSTRUCCIONES;
     string_append(&path_archivo, kernelToMemoria->archivo);
+
+    
 
     cargar_instrucciones(path_archivo, kernelToMemoria->pid);
 
@@ -334,8 +353,10 @@ void cargar_instrucciones(char *path_archivo, uint32_t pid){
     free(linea);
     fclose(archivo);
 
+    proceso->lista_instrucciones = lista_instrucciones;
+
     char *pid_str = string_itoa(pid);
-    dictionary_put(diccionario_procesos, pid_str, lista_instrucciones);
+    dictionary_put(diccionario_procesos, pid_str, proceso);
     free(pid_str);
 }
 
@@ -346,17 +367,18 @@ bool enviar_instruccion(uint32_t fd_cpu){
     uint32_t pc = buffer_read_uint32(paquete->buffer);
 
     char *pid_str = string_itoa(pid);
-    t_list *lista_instruccion_to_cpu = dictionary_get(diccionario_procesos, pid_str);
+    t_proceso* proceso = dictionary_get(diccionario_procesos, pid_str);
+    //t_list *lista_instruccion_to_cpu = dictionary_get(diccionario_procesos, pid_str);
     free(pid_str);
 
-    if (lista_instruccion_to_cpu == NULL || pc >= list_size(lista_instruccion_to_cpu))
+    if (proceso->lista_instrucciones == NULL || pc >= list_size(proceso->lista_instrucciones))
     {
         log_error(logger, "PID no encontrado o PC no valido");
         destruir_paquete(paquete);
         return false;
     }
 
-    struct_memoria_to_cpu *instruccion = list_get(lista_instruccion_to_cpu, pc);
+    struct_memoria_to_cpu *instruccion = list_get(proceso->lista_instrucciones, pc);
     uint32_t tam_para = string_length(instruccion->parametros);
     t_paquete *paquete_retorno = crear_paquete(FETCH, buffer_create(0));
     buffer_add_uint8(paquete_retorno->buffer, instruccion->instruccion);
@@ -394,4 +416,12 @@ cpu_write *deserializar_cpu_write(t_buffer *data) {
     ret->datos_length = buffer_read_uint32(data);
     ret->datos = buffer_read_string(data, &ret->datos_length);
     return ret;
+}
+
+t_buffer* serializar_config_to_cpu(){
+    t_config_to_cpu* cfg
+}
+
+void enviar_config_to_cpu(){
+
 }
