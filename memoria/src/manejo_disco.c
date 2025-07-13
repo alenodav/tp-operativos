@@ -31,6 +31,8 @@ void suspender_proceso(tablas_por_pid* contenido) {
     char* pid = string_itoa(contenido->pid);
     string_append(&contenido_a_swap, "\n");
     string_append(&pid, "\n");
+    
+    //Escribo en el swafile una linea con el pid, y otra con todo el contenido de las paginas junto.
     txt_write_in_file(swapfile, pid);
     txt_write_in_file(swapfile, contenido_a_swap);
     txt_close_file(swapfile);
@@ -46,16 +48,41 @@ void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso)
     char* pid_s = string_itoa(contenido->pid);
     char* linea = malloc(memoria_cfg->TAM_MEMORIA);
     bool encontrado = false;
+    uint32_t aux = tamanio_proceso;
+    uint32_t indices_marcos = 0;
+    asignar_marcos(contenido->tabla_raiz, &aux, 1, contenido->marcos, &indices_marcos);
 
+    //Crea un nuevo archivo sin el pid buscado y sus paginas, para "borrarlo" del swapfile.
     while (fgets(linea, memoria_cfg->TAM_MEMORIA, swapfile)) {
         linea[string_length(linea) - 1] = '\0';
 
         if (string_equals_ignore_case(linea, pid_s)) {
             encontrado = true;
         }
-
+        else if (encontrado) {
+            for (int i = 0; i < contenido->cant_marcos; i++) {
+                char* contenido_a_marco = malloc(memoria_cfg->TAM_PAGINA);
+                contenido_a_marco = string_substring(linea, i * memoria_cfg->TAM_PAGINA, (i + 1) * memoria_cfg->TAM_PAGINA);
+                actualizar_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA, (void*)contenido_a_marco);
+                free(contenido_a_marco);
+                contenido_a_marco = NULL;
+            }
+            encontrado = false;
+        }
+        else {
+            linea[string_length(linea) - 1] = '\n';
+            txt_write_in_file(swapfile_tmp, linea);
+        }
     }
 
+    txt_close_file(swapfile_tmp);
     fclose(swapfile);
+
+    remove(memoria_cfg->PATH_SWAPFILE);
+    rename(swapfile_tmp_path, memoria_cfg->PATH_SWAPFILE);
+
+    free(linea);
+    free(pid_s);
+    free(swapfile_tmp_path);
 }
 

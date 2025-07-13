@@ -29,7 +29,7 @@ tablas_por_pid* crear_tabla_raiz(uint32_t pid, uint32_t tamanio_proceso) {
     return tabla_raiz_pid;
 }
 
-void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint32_t nivel, int* marcos, int* indice_marcos) {
+void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint32_t nivel, uint32_t* marcos, uint32_t* indice_marcos) {
     for (int entrada = 0; entrada < memoria_cfg->ENTRADAS_POR_TABLA; entrada++) {
         if (*tamanio_proceso > 0) {
             if (nivel < memoria_cfg->CANTIDAD_NIVELES) {

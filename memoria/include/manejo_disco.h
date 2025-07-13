@@ -6,13 +6,8 @@
 #include<commons/temporal.h>
 #include "common.h"
 
-typedef struct contenido_swap {
-    uint32_t pid;
-    uint32_t cant_paginas;
-    char** paginas;
-} contenido_swap;
-
 void dump_memory(tablas_por_pid* contenido); 
 void suspender_proceso(tablas_por_pid* contenido);
+void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso);
 
 #endif
