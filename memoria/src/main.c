@@ -206,6 +206,7 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
     t_config_to_cpu* cfg_to_cpu = malloc(sizeof(t_config_to_cpu));
     cfg_to_cpu->cantidad_niveles = memoria_cfg->CANTIDAD_NIVELES;
     cfg_to_cpu->tam_paginas = memoria_cfg->TAM_PAGINA;
+    cfg_to_cpu->cant_entradas = memoria_cfg->ENTRADAS_POR_TABLA;
     enviar_config_to_cpu(cfg_to_cpu, cliente);
     sem_post(&kernel_handshake);
     bool proceso_terminado = false;
@@ -478,9 +479,10 @@ cpu_write *deserializar_cpu_write(t_buffer *data) {
 }
 
 t_buffer* serializar_config_to_cpu(t_config_to_cpu* cfg_to_cpu){
-    t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2);
+    t_buffer* buffer = buffer_create(sizeof(uint32_t) * 3);
     buffer_add_uint32(buffer, cfg_to_cpu->cantidad_niveles);
     buffer_add_uint32(buffer, cfg_to_cpu->tam_paginas);
+    buffer_add_uint32(buffer, cfg_to_cpu->cant_entradas);
     return buffer;
 }
 

@@ -84,6 +84,7 @@ typedef struct {
 typedef struct{
     uint32_t tam_paginas;
     uint32_t cantidad_niveles;
+    uint32_t cant_entradas;
 } t_config_to_cpu;
 
 #endif // ESTRUCTURAS_H

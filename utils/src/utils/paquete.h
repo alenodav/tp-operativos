@@ -28,7 +28,8 @@ typedef enum {
     WRITE_MEMORIA,
     DUMP_MEMORY_SYSCALL,
     SUSPENDER_PROCESO,
-    DESSUSPENDER_PROCESO
+    DESSUSPENDER_PROCESO,
+    CONSULTA_MARCO
 } t_operacion;
 
 typedef struct {
