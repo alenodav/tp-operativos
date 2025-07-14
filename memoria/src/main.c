@@ -139,6 +139,20 @@ void handshake_kernel(uint32_t fd_escucha_memoria)
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 dump_memory(tablas_proceso, proceso->lista_metricas);
                 break;
+            case SUSPENDER_PROCESO:
+                pid = buffer_read_uint32(paquete->buffer);
+                pid_s = string_itoa(pid);
+                proceso = dictionary_get(diccionario_procesos, pid_s);
+                tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
+                suspender_proceso(tablas_proceso, proceso->lista_metricas);
+                break;
+            case DESSUSPENDER_PROCESO:
+                pid = buffer_read_uint32(paquete->buffer);
+                pid_s = string_itoa(pid);
+                proceso = dictionary_get(diccionario_procesos, pid_s);
+                tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
+                dessuspender_procesos(tablas_proceso, proceso->tamanio, proceso->lista_metricas);
+                break;
             default:
                 log_error(logger, "Operación desconocida de Kernel");
                 break;
