@@ -26,7 +26,7 @@ void handshake_cpu(uint32_t);
 typedef struct{
     uint32_t tamanio;
     t_list* lista_instrucciones;
-    t_metricas* lista_metricas;
+    struct t_metricas* lista_metricas;
 } t_proceso;
 
 typedef struct t_memoria{
@@ -61,6 +61,8 @@ typedef struct t_metricas{
     uint32_t cantidad_escrituras;
 } t_metricas;
 
+extern t_list* metricas_por_procesos;
+
 //Tabla de paginas.
 typedef struct tabla_paginas{
     uint32_t nivel;     //nivel(1...n)
@@ -74,18 +76,24 @@ typedef struct tablas_por_pid{
     uint32_t cant_marcos;
 } tablas_por_pid;
 
+extern t_list *lista_tablas_por_pid;
+
 void leer_configuracion(t_config *);
 bool recibir_consulta_memoria(uint32_t, t_paquete*);
 void recibir_instrucciones(t_paquete*);
 bool verificar_espacio_memoria(uint32_t);
 kernel_to_memoria* deserializar_kernel_to_memoria(t_buffer*);
-void cargar_instrucciones(char*, uint32_t pid_t);
+void cargar_instrucciones(char *path_archivo, kernel_to_memoria* proceso_recibido);
 struct_memoria_to_cpu* parsear_linea(char* linea);
 bool enviar_instruccion(uint32_t fd_cpu);
 void liberar_lista_instrucciones(t_list* lista);
 void liberar_diccionario();
 cpu_read *deserializar_cpu_read(t_buffer *data);
 cpu_write *deserializar_cpu_write(t_buffer *data);
+tablas_por_pid* tablas_por_pid_remove_by_pid(t_list* tablas_por_pid_list, uint32_t pid);
+tablas_por_pid* tablas_por_pid_get_by_pid(t_list* tablas_por_pid_list, uint32_t pid);
+t_buffer* serializar_config_to_cpu(t_config_to_cpu* cfg_to_cpu);
+void enviar_config_to_cpu(t_config_to_cpu* cfg_to_cpu, uint32_t socket);
 
 void* leer_pagina_completa(uint32_t direccion_fisica, uint32_t pid, t_metricas *metricas_proceso);
 bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina, uint32_t pid, t_metricas *metricas_proceso);

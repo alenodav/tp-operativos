@@ -65,11 +65,13 @@ typedef struct {
     uint32_t direccion;
     uint32_t datos_length;
     char* datos;
+    uint32_t pid;
 } cpu_write;
 
 typedef struct {
     uint32_t direccion;
     uint32_t tamanio;
+    uint32_t pid;
 } cpu_read;
 
 

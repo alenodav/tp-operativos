@@ -32,6 +32,7 @@ typedef struct entrada_tabla{
 tabla_paginas* crear_tabla(uint32_t nivel);
 tablas_por_pid* crear_tabla_raiz(uint32_t pid, uint32_t tamanio_proceso);
 uint32_t devolver_marco(tabla_paginas* tabla_actual, uint32_t* indices, uint32_t nivel, t_metricas *metricas_proceso);
+void liberar_espacio_memoria(tablas_por_pid* proceso, uint32_t tamanio_proceso, t_metricas* metricas_proceso);
 void liberar_tablas_paginas(tabla_paginas* tabla_actual, uint32_t nivel, uint32_t* tamanio_proceso);
 
 

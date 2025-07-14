@@ -7,10 +7,10 @@
 #include <stdint.h>
 #include "common.h"
 
-extern t_list* metricas_por_procesos;
 
 
 
-void mostrar_metricas(uint32_t pid);
+
+void mostrar_metricas(t_metricas* metricas);
 
 #endif

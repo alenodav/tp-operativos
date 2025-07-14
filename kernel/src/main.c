@@ -360,10 +360,11 @@ void enviar_instrucciones() {
 }
 
 t_buffer *serializar_kernel_to_memoria(kernel_to_memoria* archivo) {
-    t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2 + archivo->archivo_length);
+    t_buffer* buffer = buffer_create(sizeof(uint32_t) * 3 + archivo->archivo_length);
     buffer_add_uint32(buffer, archivo->archivo_length);
     buffer_add_string(buffer, archivo->archivo_length, archivo->archivo);
     buffer_add_uint32(buffer, archivo->tamanio);
+    buffer_add_uint32(buffer, archivo->pid);
     return buffer;
 }
 
