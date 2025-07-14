@@ -6,8 +6,8 @@
 #include<commons/temporal.h>
 #include "common.h"
 
-void dump_memory(tablas_por_pid* contenido); 
-void suspender_proceso(tablas_por_pid* contenido);
-void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso);
+void dump_memory(tablas_por_pid* contenido, t_metricas *metricas_proceso); 
+void suspender_proceso(tablas_por_pid* contenido, t_metricas *metricas_proceso);
+
 
 #endif

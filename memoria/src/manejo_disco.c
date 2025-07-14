@@ -1,10 +1,13 @@
 #include<../include/manejo_disco.h>
 
-void dump_memory(tablas_por_pid* contenido) {
+void dump_memory(tablas_por_pid* contenido, t_metricas* metricas_proceso) {
+    log_info(logger, "## PID: %d - Memory Dump solicitado", contenido->pid);
     char* contenido_dump = "";
     for(int i = 0; i < contenido->cant_marcos; i++) {
-        void* contenido_marco = leer_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA);
+        void* contenido_marco = leer_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA, contenido->pid, metricas_proceso);
         string_append(&contenido_dump, (char*)contenido_marco);
+        free(contenido_marco);
+        contenido_marco = NULL;
     }
     char * path_archivo = string_duplicate(memoria_cfg->DUMP_PATH);
     string_append_with_format(&path_archivo, "%d-%s.dmp", contenido->pid, temporal_get_string_time("%H:%M:%S:%MS"));
@@ -15,15 +18,16 @@ void dump_memory(tablas_por_pid* contenido) {
     free(path_archivo);
 }
 
-void suspender_proceso(tablas_por_pid* contenido) {
+void suspender_proceso(tablas_por_pid* contenido, t_metricas *metricas_proceso) {
     char* contenido_a_swap = "";
     for(int i = 0; i < contenido->cant_marcos; i++) {
-        void* contenido_marco = leer_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA);
+        void* contenido_marco = leer_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA, contenido->pid, metricas_proceso);
         string_append(&contenido_a_swap, (char*)contenido_marco);
         void* pagina_vacia = calloc(memoria_cfg->TAM_PAGINA, sizeof(void*));
-        actualizar_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA, pagina_vacia);
+        actualizar_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA, pagina_vacia, contenido->pid, metricas_proceso);
         liberar_marco(contenido->marcos[i]);
         free(pagina_vacia);
+        pagina_vacia = NULL;
     }
     free(contenido->marcos);
     contenido->marcos = NULL;
@@ -38,9 +42,10 @@ void suspender_proceso(tablas_por_pid* contenido) {
     txt_close_file(swapfile);
     free(contenido_a_swap);
     free(pid);
+    metricas_proceso->bajadas_a_swap++;
 }
 
-void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso) {
+void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso, t_metricas *metricas_proceso) {
     char* swapfile_tmp_path = memoria_cfg->PATH_SWAPFILE;
     string_append(&swapfile_tmp_path, ".tmp");
     FILE* swapfile_tmp = txt_open_for_append(swapfile_tmp_path);
@@ -50,7 +55,7 @@ void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso)
     bool encontrado = false;
     uint32_t aux = tamanio_proceso;
     uint32_t indices_marcos = 0;
-    asignar_marcos(contenido->tabla_raiz, &aux, 1, contenido->marcos, &indices_marcos);
+    asignar_marcos(contenido->tabla_raiz, &aux, 1, contenido->marcos, &indices_marcos, metricas_proceso);
 
     //Crea un nuevo archivo sin el pid buscado y sus paginas, para "borrarlo" del swapfile.
     while (fgets(linea, memoria_cfg->TAM_MEMORIA, swapfile)) {
@@ -63,10 +68,66 @@ void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso)
             for (int i = 0; i < contenido->cant_marcos; i++) {
                 char* contenido_a_marco = malloc(memoria_cfg->TAM_PAGINA);
                 contenido_a_marco = string_substring(linea, i * memoria_cfg->TAM_PAGINA, (i + 1) * memoria_cfg->TAM_PAGINA);
-                actualizar_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA, (void*)contenido_a_marco);
+                actualizar_pagina_completa(contenido->marcos[i] * memoria_cfg->TAM_PAGINA, (void*)contenido_a_marco, contenido->pid, metricas_proceso);
                 free(contenido_a_marco);
                 contenido_a_marco = NULL;
             }
+            encontrado = false;
+        }
+        else {
+            linea[string_length(linea) - 1] = '\n';
+            txt_write_in_file(swapfile_tmp, linea);
+        }
+    }
+
+    txt_close_file(swapfile_tmp);
+    fclose(swapfile);
+
+    remove(memoria_cfg->PATH_SWAPFILE);
+    rename(swapfile_tmp_path, memoria_cfg->PATH_SWAPFILE);
+
+    free(linea);
+    free(pid_s);
+    free(swapfile_tmp_path);
+    metricas_proceso->subidas_a_mp++;
+}
+
+bool tiene_entradas_swap(tablas_por_pid* proceso) {
+    bool retorno = false;
+    char* pid_s = string_itoa(proceso->pid);
+    char* linea = malloc(memoria_cfg->TAM_MEMORIA);
+    FILE* swapfile = fopen(memoria_cfg->PATH_SWAPFILE, "r");
+    while (fgets(linea, memoria_cfg->TAM_MEMORIA, swapfile)) {
+        linea[string_length(linea) - 1] = '\0';
+
+        if (string_equals_ignore_case(linea, pid_s)) {
+            retorno = true;
+            break;
+        }
+    }
+    return retorno;
+}
+
+void liberar_proceso_swap(tablas_por_pid* contenido, uint32_t tamanio_proceso, t_metricas *metricas_proceso) {
+    char* swapfile_tmp_path = memoria_cfg->PATH_SWAPFILE;
+    string_append(&swapfile_tmp_path, ".tmp");
+    FILE* swapfile_tmp = txt_open_for_append(swapfile_tmp_path);
+    FILE* swapfile = fopen(memoria_cfg->PATH_SWAPFILE, "r");
+    char* pid_s = string_itoa(contenido->pid);
+    char* linea = malloc(memoria_cfg->TAM_MEMORIA);
+    bool encontrado = false;
+    uint32_t aux = tamanio_proceso;
+    uint32_t indices_marcos = 0;
+    asignar_marcos(contenido->tabla_raiz, &aux, 1, contenido->marcos, &indices_marcos, metricas_proceso);
+
+    //Crea un nuevo archivo sin el pid buscado y sus paginas, para "borrarlo" del swapfile.
+    while (fgets(linea, memoria_cfg->TAM_MEMORIA, swapfile)) {
+        linea[string_length(linea) - 1] = '\0';
+
+        if (string_equals_ignore_case(linea, pid_s)) {
+            encontrado = true;
+        }
+        else if (encontrado) {
             encontrado = false;
         }
         else {

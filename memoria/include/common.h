@@ -86,11 +86,15 @@ void liberar_diccionario();
 cpu_read *deserializar_cpu_read(t_buffer *data);
 cpu_write *deserializar_cpu_write(t_buffer *data);
 
-void* leer_pagina_completa(uint32_t direccion_fisica);
-bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina);
-void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint32_t nivel, uint32_t* marcos, uint32_t* indice_marcos);
+void* leer_pagina_completa(uint32_t direccion_fisica, uint32_t pid, t_metricas *metricas_proceso);
+bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina, uint32_t pid, t_metricas *metricas_proceso);
+void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint32_t nivel, uint32_t* marcos, uint32_t* indice_marcos, t_metricas* metricas_proceso);
 
 int obtener_marco_libre();
 void liberar_marco(int marco);
+
+void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso, t_metricas *metricas_proceso);
+bool tiene_entradas_swap(tablas_por_pid* proceso);
+void liberar_proceso_swap(tablas_por_pid* contenido, uint32_t tamanio_proceso, t_metricas *metricas_proceso); 
 
 #endif

@@ -29,7 +29,7 @@ tablas_por_pid* crear_tabla_raiz(uint32_t pid, uint32_t tamanio_proceso) {
     return tabla_raiz_pid;
 }
 
-void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint32_t nivel, uint32_t* marcos, uint32_t* indice_marcos) {
+void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint32_t nivel, uint32_t* marcos, uint32_t* indice_marcos, t_metricas *metricas_proceso) {
     for (int entrada = 0; entrada < memoria_cfg->ENTRADAS_POR_TABLA; entrada++) {
         if (*tamanio_proceso > 0) {
             if (nivel < memoria_cfg->CANTIDAD_NIVELES) {
@@ -38,7 +38,7 @@ void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint
                     tabla_actual->entradas[entrada].marco = -1;
                 }
 
-                asignar_marcos(tabla_actual->entradas[entrada].tabla_siguiente, tamanio_proceso, nivel + 1, marcos, indice_marcos);
+                asignar_marcos(tabla_actual->entradas[entrada].tabla_siguiente, tamanio_proceso, nivel + 1, marcos, indice_marcos, metricas_proceso);
             }
             else {
                 *tamanio_proceso = *tamanio_proceso - memoria_cfg->TAM_PAGINA;
@@ -52,6 +52,7 @@ void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint
             break;
         }
     }
+    metricas_proceso->subidas_a_mp++;
 }
 
 uint32_t devolver_marco(tabla_paginas* tabla_actual, uint32_t* indices, uint32_t nivel, t_metricas *metricas_proceso) {
@@ -68,13 +69,54 @@ uint32_t devolver_marco(tabla_paginas* tabla_actual, uint32_t* indices, uint32_t
     return marco;
 }
 
-void* leer_pagina_completa(uint32_t direccion_fisica) {
+void* leer_pagina_completa(uint32_t direccion_fisica, uint32_t pid, t_metricas *metricas_proceso) {
+    log_info(logger, "## PID: %d - Lectura - Dir. Física: %d - Tamaño: %d", pid, direccion_fisica, memoria_cfg->TAM_PAGINA);
     void* retorno = malloc(memoria_cfg->TAM_PAGINA);
     memcpy(retorno, memoria_principal->datos + direccion_fisica, memoria_cfg->TAM_PAGINA);
+    metricas_proceso->cantidad_lecturas++;
     return retorno;
 }
 
-bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina) {
+bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina, uint32_t pid, t_metricas *metricas_proceso) {
+    log_info(logger, "## PID: %d - Escritura - Dir. Física: %d - Tamaño: %d", pid, direccion_fisica, memoria_cfg->TAM_PAGINA);
     memcpy(memoria_principal->datos + direccion_fisica, pagina, memoria_cfg->TAM_PAGINA);
+    metricas_proceso->cantidad_escrituras++;
     return true;
+}
+
+void liberar_espacio_memoria(tablas_por_pid* proceso, uint32_t tamanio_proceso, t_metricas* metricas_proceso) {
+    if (tiene_entradas_swap(proceso)) {
+        liberar_proceso_swap(proceso, tamanio_proceso, metricas_proceso);
+    }
+    else {
+        for(int i = 0; i < proceso->cant_marcos; i++) {
+            void* pagina_vacia = calloc(memoria_cfg->TAM_PAGINA, sizeof(void*));
+            actualizar_pagina_completa(proceso->marcos[i] * memoria_cfg->TAM_PAGINA, pagina_vacia, proceso->pid, metricas_proceso);
+            liberar_marco(proceso->marcos[i]);
+            free(pagina_vacia);
+            pagina_vacia = NULL;
+        }
+    }
+    free(proceso->marcos);
+    uint32_t aux = tamanio_proceso;
+    liberar_tablas_paginas(proceso->tabla_raiz, 1, &aux);
+    free(proceso);
+}
+
+void liberar_tablas_paginas(tabla_paginas* tabla_actual, uint32_t nivel, uint32_t* tamanio_proceso) {
+    for (int entrada = 0; entrada < memoria_cfg->ENTRADAS_POR_TABLA; entrada++) {
+        if (tamanio_proceso < 0) {
+            if (nivel < memoria_cfg->CANTIDAD_NIVELES) {
+                liberar_tablas_paginas(tabla_actual->entradas[entrada].tabla_siguiente, nivel + 1, tamanio_proceso);
+                free(&(tabla_actual->entradas[entrada]));
+            }
+            else {
+                free(&(tabla_actual->entradas[entrada]));
+                *tamanio_proceso = *tamanio_proceso - memoria_cfg->TAM_PAGINA;
+            }
+        }
+        else {
+            break;
+        }
+    }
 }
