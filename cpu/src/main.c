@@ -341,3 +341,55 @@ void interrumpir_proceso(uint32_t pid, uint32_t pc) {
     t_paquete* respuesta = crear_paquete(INTERRUPT, buffer);
     enviar_paquete(respuesta, fd_interrupt);
 }
+
+//TLB
+
+void inicializar_tlb() {
+    algoritmo_tlb = config_get_string_value(config, "REEMPLAZO_TLB");
+    cant_entradas_tlb = config_get_int_value(config, "ENTRADAS_TLB");
+    tlb = list_create();
+    
+
+}
+
+uint32_t buscar_en_tlb(uint32_t nro_pagina) {
+    entrada_tlb* entrada = entrada_tlb_get_by_pagina(tlb, nro_pagina);
+    if (entrada) {
+        entrada->tiempo_desde_ultimo_uso = temporal_create();
+        return entrada->marco;
+    }
+    else {
+        return -1;
+    }
+}
+
+void agregar_a_tlb(entrada_tlb* entrada) {
+    if(list_size(tlb) == cant_entradas_tlb) {
+        correr_algoritmo_tlb();
+    }
+    entrada->tiempo_desde_ultimo_uso = temporal_create();
+    list_add(tlb, entrada);
+}
+
+void correr_algoritmo_tlb() {
+    if(string_equals_ignore_case(algoritmo_tlb, "LRU")) {
+        list_sort(tlb, es_mas_reciente);
+    }
+    entrada_tlb* entrada = list_remove(tlb, 0);
+    temporal_destroy(entrada->tiempo_desde_ultimo_uso);
+    free(entrada);
+}
+
+entrada_tlb* entrada_tlb_get_by_pagina(t_list* entrada_tlb_list, uint32_t pagina) {
+    bool pagina_equals(void *p_entrada_tlb) {
+        entrada_tlb *entrada_tlb_cast = (entrada_tlb*)p_entrada_tlb;
+        return entrada_tlb_cast->pagina == pagina;
+    }
+    return list_find(entrada_tlb_list, pagina_equals);
+}
+
+bool es_mas_reciente(void* a, void* b) {
+    entrada_tlb* entrada_a = (entrada_tlb*) a;
+    entrada_tlb* entrada_b = (entrada_tlb*) b;
+    return temporal_gettime(entrada_a->tiempo_desde_ultimo_uso) >= temporal_gettime(entrada_b->tiempo_desde_ultimo_uso);
+}

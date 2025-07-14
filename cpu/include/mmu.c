@@ -45,13 +45,20 @@ uint32_t calcular_direccion_fisica(uint32_t direccion_logica, uint32_t pid) {
 }
 
 uint32_t consultar_marco(uint32_t direccion_logica, uint32_t pid) {
-    uint32_t nro_marco = -1;
     uint32_t nro_pagina = numero_pagina(direccion_logica); 
+    uint32_t nro_marco = buscar_en_tlb(nro_pagina);
+    if(nro_marco != -1) {
+        return nro_marco;
+    }
     uint32_t *indices = calloc(cant_niveles, sizeof(uint32_t));
     for (int i = 0; i < cant_niveles; i++) {
         indices[i] = entrada_nivel_X(nro_pagina, i + 1);
     }
     nro_marco = consultar_marco_memoria(indices, pid);
+    entrada_tlb *entrada = malloc(sizeof(entrada_tlb));
+    entrada->marco = nro_marco;
+    entrada->pagina = nro_pagina;
+    agregar_a_tlb(entrada);
     free(indices);
     return nro_marco;
 }

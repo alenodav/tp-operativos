@@ -11,6 +11,7 @@
 #include <utils/log.h>
 #include <utils/estructuras.h>
 #include <semaphore.h>
+#include <commons/temporal.h>
 #include "../include/mmu.h"
 
 // Variables globales
@@ -32,5 +33,20 @@ void destruir_t_syscall(t_syscall *data);
 t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* param); 
 void check_interrupt(uint32_t pid);
 void interrumpir_proceso(uint32_t pid, uint32_t pc);
+
+//TLB
+
+
+t_list* tlb;
+int cant_entradas_tlb;
+char* algoritmo_tlb;
+
+void inicializar_tlb();
+
+void correr_algoritmo_tlb();
+entrada_tlb* entrada_tlb_get_by_pagina(t_list* entrada_tlb_list, uint32_t pagina);
+bool es_mas_reciente(void* a, void* b);
+
+
 
 #endif
