@@ -1,10 +1,7 @@
 #include <main.h>
 
-t_log* logger;
-t_config* config;
 uint32_t fd_dispatch;
 uint32_t fd_interrupt;
-uint32_t fd_memoria;
 sem_t sem_handshake;
 
 int main(int argc, char* argv[]){
@@ -117,6 +114,8 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
     // fetch
     t_buffer* buffer = serializar_kernel_to_cpu(instruccion);
 
+    log_info(logger, "## PID: %d - FETCH - Program Counter: %d", instruccion->pid, instruccion->pc);
+
     t_paquete* paquete = crear_paquete(FETCH,buffer);
     enviar_paquete(paquete,fd_memoria);
 
@@ -143,6 +142,15 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             escribir->datos = parametros[1];
             escribir->datos_length = string_length(parametros[1]); 
             escribir->direccion = atoi(parametros[0]);
+
+            if(cant_entradas_cache != 0) {
+                escribir_en_cache(escribir->direccion, escribir->datos_length, pid, (void*)escribir->datos);
+                log_info(logger, "PID: %d - Acción: ESCRIBIR - Dirección Física: CACHE - Valor: %s", pid, escribir->datos);
+                break;
+            }
+
+            uint32_t direccion_fisica = calcular_direccion_fisica(escribir->direccion, pid);
+            escribir->direccion = direccion_fisica;
             
             log_debug(logger, "PID: %d - EXECUTE - WRITE - Dirección: %d, Valor: %s", pid, escribir->direccion, escribir->datos);
             
@@ -160,6 +168,8 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             } else {
                 log_error(logger, "PID: %d - Error en WRITE: %s", pid, mensaje);
             }
+
+            log_info(logger, "PID: %d - Acción: ESCRIBIR - Dirección Física: %d - Valor: %s", pid, direccion_fisica, escribir->datos);
             
             free(mensaje);
             destruir_paquete(respuesta);
@@ -175,7 +185,15 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             char** parametros = string_split(instruccion_recibida->parametros, " ");
             leer->direccion = atoi(parametros[0]);
             leer->tamanio = atoi(parametros[1]);
-            
+
+            if(cant_entradas_cache != 0) {
+                void* lectura = leer_de_cache(leer->direccion, leer->tamanio, pid);
+                log_info(logger, "PID: %d - Acción: LEER - Dirección Física: CACHE - Valor: %s", pid, (char*)lectura);
+                break;
+            }
+
+            uint32_t direccion_fisica = calcular_direccion_fisica(leer->direccion, pid);
+            leer->direccion = direccion_fisica;
             log_debug(logger, "PID: %d - EXECUTE - READ - Dirección: %d, Tamaño: %d", pid, leer->direccion, leer->tamanio);            
             
             t_buffer* buffer = serializar_cpu_read(leer);
@@ -187,8 +205,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
             char* valor_leido = buffer_read_string(respuesta->buffer, &length_respuesta);
             
-            printf("PID: %d - READ - Valor leído: %s\n", pid, valor_leido);
-            log_debug(logger, "PID: %d - READ - Valor leído: %s", pid, valor_leido);
+            log_info(logger, "PID: %d - Acción: LEER - Dirección Física: %d - Valor: %s", pid, direccion_fisica, valor_leido);
             
             free(valor_leido);
             destruir_paquete(respuesta);
@@ -264,6 +281,8 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             pc++;
         }
 
+        log_info(logger, "## PID: %d - Ejecutando: %s - %s", instruccion->pid, t_instruccion_to_string(instruccion_recibida->instruccion), instruccion_recibida->parametros);
+
         if (interrupcion) {
             interrupcion = false;
             interrumpir_proceso(pid, pc);
@@ -319,6 +338,7 @@ void check_interrupt(uint32_t pid) {
         if (paquete->codigo_operacion == INTERRUPT) {
             uint32_t pid_interrupcion = buffer_read_uint32(paquete->buffer);
             if(pid_interrupcion == pid) {
+                log_info(logger, "## Llega interrupción al puerto Interrupt");
                 interrupcion = true;
             }
             else {
@@ -340,6 +360,38 @@ void interrumpir_proceso(uint32_t pid, uint32_t pc) {
             
     t_paquete* respuesta = crear_paquete(INTERRUPT, buffer);
     enviar_paquete(respuesta, fd_interrupt);
+}
+
+char *t_instruccion_to_string(t_instruccion instruccion) {
+    switch(instruccion){
+        case NOOP:
+            return "NOOP";
+            break;
+        case WRITE:
+            return "WRITE";
+            break;
+        case READ:
+            return "READ";
+            break;
+        case IO_SYSCALL:
+            return "IO_SYSCALL";
+            break;
+        case INIT_PROC:
+            return "INIT_PROC";
+            break;    
+        case GOTO:
+            return "GOTO";
+            break;
+        case DUMP_MEMORY:
+            return "DUMP_MEMORY";
+            break;
+        case EXIT:
+            return "EXIT";
+            break;
+        default:
+            return "";
+            break;
+    }
 }
 
 //TLB
@@ -376,6 +428,11 @@ void correr_algoritmo_tlb() {
         list_sort(tlb, es_mas_reciente);
     }
     entrada_tlb* entrada = list_remove(tlb, 0);
+    eliminar_entrada_tlb((void*)entrada);
+}
+
+void eliminar_entrada_tlb(void *ptr) {
+    entrada_tlb* entrada = (entrada_tlb*)ptr;
     temporal_destroy(entrada->tiempo_desde_ultimo_uso);
     free(entrada);
 }
@@ -393,3 +450,8 @@ bool es_mas_reciente(void* a, void* b) {
     entrada_tlb* entrada_b = (entrada_tlb*) b;
     return temporal_gettime(entrada_a->tiempo_desde_ultimo_uso) >= temporal_gettime(entrada_b->tiempo_desde_ultimo_uso);
 }
+
+void eliminar_entradas_tlb() {
+    list_clean_and_destroy_elements(tlb, eliminar_entrada_tlb);
+}
+
