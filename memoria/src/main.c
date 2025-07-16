@@ -7,9 +7,9 @@ pthread_mutex_t mutex_diccionario;
 sem_t cpu_handshake;
 sem_t kernel_handshake;
 t_config *config;
-t_config_memoria* cfg_memoria;
 t_list *lista_tablas_por_pid;
 uint32_t tam_memoria_actual;
+uint32_t fd_escucha_memoria;
 
 int main(int argc, char *argv[])
 {
@@ -26,20 +26,21 @@ int main(int argc, char *argv[])
     sem_init(&kernel_handshake, 0, 0);
     sem_init(&mutex_memoria, 0, 1);
     log_debug(logger, "Diccionario de procesos creado correctamente.");
-    tam_memoria_actual = memoria_cfg->TAM_MEMORIA;
+    lista_tablas_por_pid = list_create();
+    tam_memoria_actual = cfg_memoria->TAM_MEMORIA;
 
-    uint32_t fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
+    fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
 
     // Threads para CPU;
-    for (int i = 0; i < memoria_cfg->CANT_CPU; i++) {
+    for (int i = 0; i < cfg_memoria->CANT_CPU; i++) {
         pthread_t thread_escucha_cpu;
-        pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, &fd_escucha_memoria);
+        pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, NULL);
         pthread_detach(thread_escucha_cpu);
     }
 
     // Thread para atender a Kernel
     pthread_t thread_escucha_kernel;
-    pthread_create(&thread_escucha_kernel, NULL, (void*)handshake_kernel, &fd_escucha_memoria);
+    pthread_create(&thread_escucha_kernel, NULL, (void*)handshake_kernel, NULL);
     pthread_detach(thread_escucha_kernel);
 
     getchar();
@@ -59,7 +60,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void handshake_kernel(uint32_t fd_escucha_memoria)
+void handshake_kernel()
 {
     uint32_t cliente = esperar_cliente(fd_escucha_memoria);
 
@@ -103,8 +104,7 @@ void handshake_kernel(uint32_t fd_escucha_memoria)
                 recibir_instrucciones(paquete);
                 //si guardo las instrucciones signifca que "admiti" un proceso entonces creo las tablas.
                 int tam_diccionario = dictionary_size(diccionario_procesos);
-                t_list* keys = list_create();
-                keys = dictionary_keys(diccionario_procesos);
+                t_list* keys = dictionary_keys(diccionario_procesos);
                 pid_s = list_get(keys, tam_diccionario - 1);
                 pid = atoi(pid_s);
                 t_proceso* proceso_aux = dictionary_get(diccionario_procesos, pid_s);
@@ -186,7 +186,7 @@ tablas_por_pid* tablas_por_pid_get_by_pid(t_list* tablas_por_pid_list, uint32_t 
     return list_find(tablas_por_pid_list, pid_equals);
 }
 
-void handshake_cpu(uint32_t fd_escucha_memoria)
+void handshake_cpu()
 {
     sem_wait(&cpu_handshake);
     uint32_t cliente = esperar_cliente(fd_escucha_memoria);
@@ -208,9 +208,9 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
     free(identificador);
     enviar_handshake(cliente, "MEMORIA");
     t_config_to_cpu* cfg_to_cpu = malloc(sizeof(t_config_to_cpu));
-    cfg_to_cpu->cantidad_niveles = memoria_cfg->CANTIDAD_NIVELES;
-    cfg_to_cpu->tam_paginas = memoria_cfg->TAM_PAGINA;
-    cfg_to_cpu->cant_entradas = memoria_cfg->ENTRADAS_POR_TABLA;
+    cfg_to_cpu->cantidad_niveles = cfg_memoria->CANTIDAD_NIVELES;
+    cfg_to_cpu->tam_paginas = cfg_memoria->TAM_PAGINA;
+    cfg_to_cpu->cant_entradas = cfg_memoria->ENTRADAS_POR_TABLA;
     enviar_config_to_cpu(cfg_to_cpu, cliente);
     sem_post(&kernel_handshake);
     sem_post(&cpu_handshake);
@@ -258,16 +258,16 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
             pid_s = string_itoa(pid);
             proceso = dictionary_get(diccionario_procesos, pid_s);
             void* contenido_pagina = leer_pagina_completa(direccion, pid, proceso->lista_metricas);
-            t_buffer* buffer_leer = buffer_create(memoria_cfg->TAM_PAGINA);
-            buffer_add(buffer_leer, contenido_pagina, memoria_cfg->TAM_PAGINA);
+            t_buffer* buffer_leer = buffer_create(cfg_memoria->TAM_PAGINA);
+            buffer_add(buffer_leer, contenido_pagina, cfg_memoria->TAM_PAGINA);
             t_paquete* respuesta = crear_paquete(LEER_PAGINA_COMPLETA, buffer_leer);
             enviar_paquete(respuesta, cliente);
             break;
         case ACTUALIZAR_PAGINA_COMPLETA:
             pid = buffer_read_uint32(paquete->buffer);
             direccion = buffer_read_uint32(paquete->buffer);
-            void *contenido = malloc(memoria_cfg->TAM_PAGINA);
-            buffer_read(paquete->buffer, contenido, memoria_cfg->TAM_PAGINA);
+            void *contenido = malloc(cfg_memoria->TAM_PAGINA);
+            buffer_read(paquete->buffer, contenido, cfg_memoria->TAM_PAGINA);
             pid_s = string_itoa(pid);
             proceso = dictionary_get(diccionario_procesos, pid_s);
             actualizar_pagina_completa(direccion, contenido, pid, proceso->lista_metricas);
@@ -322,13 +322,12 @@ void recibir_instrucciones(t_paquete* paquete){
     free(path_archivo);
     free(kernelToMemoria->archivo);
     free(kernelToMemoria);
-    destruir_paquete(paquete);
 }
 
 bool verificar_espacio_memoria(uint32_t tamanio)
 {
     log_info(logger, "- Tamaño Memoria Total: %d - Tamaño Solicitado: %d - Espacio Disponible: %d",
-             memoria_cfg->TAM_MEMORIA,
+             cfg_memoria->TAM_MEMORIA,
              tamanio,
              tam_memoria_actual);
 
@@ -481,7 +480,7 @@ void leer_configuracion(t_config* config){
     cfg_memoria->TAM_MEMORIA = config_get_int_value(config, "TAM_MEMORIA");
     cfg_memoria->TAM_PAGINA = config_get_int_value(config, "TAM_PAGINA");
     cfg_memoria->ENTRADAS_POR_TABLA = config_get_int_value(config, "ENTRADAS_POR_TABLA");
-    cfg_memoria->CANTIDAD_NIVELES = config_get_int_value(config, "CANTIDAD_DE_NIVELES");    
+    cfg_memoria->CANTIDAD_NIVELES = config_get_int_value(config, "CANTIDAD_NIVELES");    
     cfg_memoria->RETARDO_MEMORIA = config_get_int_value(config, "RETARDO_MEMORIA");
     cfg_memoria->PATH_SWAPFILE = config_get_string_value(config, "PATH_SWAPFILE");
     cfg_memoria->RETARDO_SWAP = config_get_string_value(config, "RETARDO_SWAP");

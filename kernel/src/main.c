@@ -807,7 +807,7 @@ void planificar_fifo_corto_plazo() {
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
         
         pthread_t respuesta_cpu; 
-        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,NULL);
+        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,(void*)cpu_a_enviar);
         pthread_detach(respuesta_cpu);   
     }
 }
@@ -1024,7 +1024,7 @@ void planificar_sjf_corto_plazo() {
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
         
         pthread_t respuesta_cpu; 
-        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,NULL);
+        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,(void*)cpu_a_enviar);
         pthread_detach(respuesta_cpu);   
     }
 }
@@ -1084,7 +1084,7 @@ void planificar_srt_corto_plazo() {
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
         
         pthread_t respuesta_cpu; 
-        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,NULL);
+        pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,(void*)cpu_a_enviar);
         pthread_detach(respuesta_cpu);   
     }
 }

@@ -20,8 +20,8 @@ extern sem_t mutex_memoria;
 
 /*Funciones para el handshake inicial*/
 
-void handshake_kernel(uint32_t);
-void handshake_cpu(uint32_t);
+void handshake_kernel();
+void handshake_cpu();
 
 
 typedef struct{
@@ -51,7 +51,7 @@ typedef struct{
     int CANT_CPU;
 } t_config_memoria;
 
-extern t_config_memoria *memoria_cfg;
+extern t_config_memoria *cfg_memoria;
 
 typedef struct t_metricas{
     uint32_t pid;
