@@ -45,7 +45,7 @@ void suspender_proceso(tablas_por_pid* contenido, t_metricas *metricas_proceso) 
     metricas_proceso->bajadas_a_swap++;
 }
 
-void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso, t_metricas *metricas_proceso) {
+void dessuspender_procesos (tablas_por_pid* contenido, int32_t tamanio_proceso, t_metricas *metricas_proceso) {
     char* swapfile_tmp_path = cfg_memoria->PATH_SWAPFILE;
     string_append(&swapfile_tmp_path, ".tmp");
     FILE* swapfile_tmp = txt_open_for_append(swapfile_tmp_path);
@@ -53,8 +53,8 @@ void dessuspender_procesos (tablas_por_pid* contenido, uint32_t tamanio_proceso,
     char* pid_s = string_itoa(contenido->pid);
     char* linea = malloc(cfg_memoria->TAM_MEMORIA);
     bool encontrado = false;
-    uint32_t aux = tamanio_proceso;
-    uint32_t indices_marcos = 0;
+    int32_t aux = tamanio_proceso;
+    int32_t indices_marcos = 0;
     asignar_marcos(contenido->tabla_raiz, &aux, 1, contenido->marcos, &indices_marcos, metricas_proceso);
 
     //Crea un nuevo archivo sin el pid buscado y sus paginas, para "borrarlo" del swapfile.
@@ -108,7 +108,7 @@ bool tiene_entradas_swap(tablas_por_pid* proceso) {
     return retorno;
 }
 
-void liberar_proceso_swap(tablas_por_pid* contenido, uint32_t tamanio_proceso, t_metricas *metricas_proceso) {
+void liberar_proceso_swap(tablas_por_pid* contenido, int32_t tamanio_proceso, t_metricas *metricas_proceso) {
     char* swapfile_tmp_path = cfg_memoria->PATH_SWAPFILE;
     string_append(&swapfile_tmp_path, ".tmp");
     FILE* swapfile_tmp = txt_open_for_append(swapfile_tmp_path);
@@ -116,8 +116,8 @@ void liberar_proceso_swap(tablas_por_pid* contenido, uint32_t tamanio_proceso, t
     char* pid_s = string_itoa(contenido->pid);
     char* linea = malloc(cfg_memoria->TAM_MEMORIA);
     bool encontrado = false;
-    uint32_t aux = tamanio_proceso;
-    uint32_t indices_marcos = 0;
+    int32_t aux = tamanio_proceso;
+    int32_t indices_marcos = 0;
     asignar_marcos(contenido->tabla_raiz, &aux, 1, contenido->marcos, &indices_marcos, metricas_proceso);
 
     //Crea un nuevo archivo sin el pid buscado y sus paginas, para "borrarlo" del swapfile.

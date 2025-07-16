@@ -8,7 +8,7 @@ t_config_memoria *cfg_memoria;
 t_memoria* memoria_principal;
 sem_t mutex_memoria;
 
-tabla_paginas* crear_tabla(uint32_t nivel){
+tabla_paginas* crear_tabla(int32_t nivel){
     tabla_paginas* tabla = malloc(sizeof(tabla_paginas));
     tabla->entradas = malloc(cfg_memoria->ENTRADAS_POR_TABLA * sizeof(entrada_tabla));
     tabla->nivel = nivel;
@@ -21,7 +21,7 @@ tabla_paginas* crear_tabla(uint32_t nivel){
     return tabla;
 }
 
-tablas_por_pid* crear_tabla_raiz(uint32_t pid, uint32_t tamanio_proceso) {
+tablas_por_pid* crear_tabla_raiz(int32_t pid, int32_t tamanio_proceso) {
     tablas_por_pid* tabla_raiz_pid = malloc(sizeof(tablas_por_pid));
     tabla_raiz_pid->pid = pid;
     tabla_raiz_pid->tabla_raiz = crear_tabla(1);
@@ -30,7 +30,7 @@ tablas_por_pid* crear_tabla_raiz(uint32_t pid, uint32_t tamanio_proceso) {
     return tabla_raiz_pid;
 }
 
-void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint32_t nivel, uint32_t* marcos, uint32_t* indice_marcos, t_metricas *metricas_proceso) {
+void asignar_marcos(tabla_paginas* tabla_actual, int32_t* tamanio_proceso, int32_t nivel, int32_t* marcos, int32_t* indice_marcos, t_metricas *metricas_proceso) {
     for (int entrada = 0; entrada < cfg_memoria->ENTRADAS_POR_TABLA; entrada++) {
         if (*tamanio_proceso > 0) {
             if (nivel < cfg_memoria->CANTIDAD_NIVELES) {
@@ -56,8 +56,8 @@ void asignar_marcos(tabla_paginas* tabla_actual, uint32_t* tamanio_proceso, uint
     metricas_proceso->subidas_a_mp++;
 }
 
-uint32_t devolver_marco(tabla_paginas* tabla_actual, uint32_t* indices, uint32_t nivel, t_metricas *metricas_proceso) {
-    uint32_t marco = -1;
+int32_t devolver_marco(tabla_paginas* tabla_actual, int32_t* indices, int32_t nivel, t_metricas *metricas_proceso) {
+    int32_t marco = -1;
     usleep(cfg_memoria->RETARDO_MEMORIA);
     int indice_actual = indices[nivel-1];
     if (nivel < cfg_memoria->CANTIDAD_NIVELES) {
@@ -70,7 +70,7 @@ uint32_t devolver_marco(tabla_paginas* tabla_actual, uint32_t* indices, uint32_t
     return marco;
 }
 
-void* leer_pagina_completa(uint32_t direccion_fisica, uint32_t pid, t_metricas *metricas_proceso) {
+void* leer_pagina_completa(int32_t direccion_fisica, int32_t pid, t_metricas *metricas_proceso) {
     log_info(logger, "## PID: %d - Lectura - Dir. Física: %d - Tamaño: %d", pid, direccion_fisica, cfg_memoria->TAM_PAGINA);
     void* retorno = malloc(cfg_memoria->TAM_PAGINA);
     sem_wait(&mutex_memoria);
@@ -80,7 +80,7 @@ void* leer_pagina_completa(uint32_t direccion_fisica, uint32_t pid, t_metricas *
     return retorno;
 }
 
-bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina, uint32_t pid, t_metricas *metricas_proceso) {
+bool actualizar_pagina_completa(int32_t direccion_fisica, void* pagina, int32_t pid, t_metricas *metricas_proceso) {
     log_info(logger, "## PID: %d - Escritura - Dir. Física: %d - Tamaño: %d", pid, direccion_fisica, cfg_memoria->TAM_PAGINA);
     sem_wait(&mutex_memoria);
     memcpy(memoria_principal->datos + direccion_fisica, pagina, cfg_memoria->TAM_PAGINA);
@@ -89,7 +89,7 @@ bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina, uint32_
     return true;
 }
 
-void liberar_espacio_memoria(tablas_por_pid* proceso, uint32_t tamanio_proceso, t_metricas* metricas_proceso) {
+void liberar_espacio_memoria(tablas_por_pid* proceso, int32_t tamanio_proceso, t_metricas* metricas_proceso) {
     if (tiene_entradas_swap(proceso)) {
         liberar_proceso_swap(proceso, tamanio_proceso, metricas_proceso);
     }
@@ -103,12 +103,12 @@ void liberar_espacio_memoria(tablas_por_pid* proceso, uint32_t tamanio_proceso, 
         }
     }
     free(proceso->marcos);
-    uint32_t aux = tamanio_proceso;
+    int32_t aux = tamanio_proceso;
     liberar_tablas_paginas(proceso->tabla_raiz, 1, &aux);
     free(proceso);
 }
 
-void liberar_tablas_paginas(tabla_paginas* tabla_actual, uint32_t nivel, uint32_t* tamanio_proceso) {
+void liberar_tablas_paginas(tabla_paginas* tabla_actual, int32_t nivel, int32_t* tamanio_proceso) {
     for (int entrada = 0; entrada < cfg_memoria->ENTRADAS_POR_TABLA; entrada++) {
         if (tamanio_proceso < 0) {
             if (nivel < cfg_memoria->CANTIDAD_NIVELES) {

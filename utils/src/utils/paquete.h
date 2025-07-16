@@ -41,24 +41,24 @@ typedef struct {
 
 typedef struct {
     char* identificador;
-    uint32_t id_length;
+    int32_t id_length;
 } t_handshake;
 
 //Crea un paquete a partir de un codigo de operacion y un t_buffer
 t_paquete *crear_paquete(u_int8_t operacion, t_buffer *buffer);
 
 //Envia un t_paquete a partir de un socket 
-void enviar_paquete(t_paquete *paquete, uint32_t socket);
+void enviar_paquete(t_paquete *paquete, int32_t socket);
 
 //Recibe un t_paquete y lo devuelve a partir de un socket
-t_paquete *recibir_paquete(uint32_t socket);
+t_paquete *recibir_paquete(int32_t socket);
 
 //Libera la memoria asociada a un paquete
 void destruir_paquete(t_paquete *paquete);
 
-char* recibir_handshake(uint32_t fd_conexion);
+char* recibir_handshake(int32_t fd_conexion);
 
-void enviar_handshake(uint32_t fd_conexion, char* identificador);
+void enviar_handshake(int32_t fd_conexion, char* identificador);
 
 
 #endif

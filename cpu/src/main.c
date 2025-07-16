@@ -1,7 +1,7 @@
 #include <main.h>
 
-uint32_t fd_dispatch;
-uint32_t fd_interrupt;
+int32_t fd_dispatch;
+int32_t fd_interrupt;
 sem_t sem_handshake;
 
 int main(int argc, char* argv[]){
@@ -87,8 +87,8 @@ void recibir_proceso(void* _){
         t_paquete* paquete = recibir_paquete(fd_dispatch);
 
         kernel_to_cpu *paquete_proceso = malloc(sizeof(kernel_to_cpu));
-        paquete_proceso->pid = buffer_read_uint32(paquete->buffer);
-        paquete_proceso->pc = buffer_read_uint32(paquete->buffer);
+        paquete_proceso->pid = buffer_read_int32(paquete->buffer);
+        paquete_proceso->pc = buffer_read_int32(paquete->buffer);
 
         log_debug(logger, "Recibido PID: %d - PC: %d", paquete_proceso->pid, paquete_proceso->pc);
 
@@ -119,15 +119,17 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 
     t_paquete* paquete = crear_paquete(FETCH,buffer);
     enviar_paquete(paquete,fd_memoria);
+    log_debug(logger, "Se envio paquete a memoria");
 
     // recibo la siguiente instruccion de memoria
     siguiente_instruccion = recibir_paquete(fd_memoria);
+    log_debug(logger, "Se recibio paquete de memoria");
     
-    instruccion_recibida->instruccion = buffer_read_uint32(siguiente_instruccion->buffer);
-    instruccion_recibida->parametros_length  = buffer_read_uint32(siguiente_instruccion->buffer);
-    instruccion_recibida->parametros = buffer_read_string(buffer, &instruccion_recibida->parametros_length);
-    uint32_t pid = instruccion->pid;
-    uint32_t pc = instruccion->pc;
+    instruccion_recibida->instruccion = buffer_read_uint8(siguiente_instruccion->buffer);
+    instruccion_recibida->parametros_length  = buffer_read_int32(siguiente_instruccion->buffer);
+    instruccion_recibida->parametros = buffer_read_string(siguiente_instruccion->buffer, &instruccion_recibida->parametros_length);
+    int32_t pid = instruccion->pid;
+    int32_t pc = instruccion->pc;
 
     switch (instruccion_recibida->instruccion) {
         case NOOP:
@@ -150,7 +152,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
                 break;
             }
 
-            uint32_t direccion_fisica = calcular_direccion_fisica(escribir->direccion, pid);
+            int32_t direccion_fisica = calcular_direccion_fisica(escribir->direccion, pid);
             escribir->direccion = direccion_fisica;
             
             log_debug(logger, "PID: %d - EXECUTE - WRITE - Dirección: %d, Valor: %s", pid, escribir->direccion, escribir->datos);
@@ -161,7 +163,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             enviar_paquete(paquete, fd_memoria);
 
             t_paquete* respuesta = recibir_paquete(fd_memoria);
-            uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
+            int32_t length_respuesta = buffer_read_int32(respuesta->buffer);
             char* mensaje = buffer_read_string(respuesta->buffer,&length_respuesta);
             
             if(string_equals_ignore_case(mensaje, "OK")) {
@@ -193,7 +195,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
                 break;
             }
 
-            uint32_t direccion_fisica = calcular_direccion_fisica(leer->direccion, pid);
+            int32_t direccion_fisica = calcular_direccion_fisica(leer->direccion, pid);
             leer->direccion = direccion_fisica;
             log_debug(logger, "PID: %d - EXECUTE - READ - Dirección: %d, Tamaño: %d", pid, leer->direccion, leer->tamanio);            
             
@@ -203,7 +205,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             enviar_paquete(paquete,fd_memoria);
     
             t_paquete* respuesta = recibir_paquete(fd_memoria);
-            uint32_t length_respuesta = buffer_read_uint32(respuesta->buffer);
+            int32_t length_respuesta = buffer_read_int32(respuesta->buffer);
             char* valor_leido = buffer_read_string(respuesta->buffer, &length_respuesta);
             
             log_info(logger, "PID: %d - Acción: LEER - Dirección Física: %d - Valor: %s", pid, direccion_fisica, valor_leido);
@@ -218,7 +220,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             break;
         }
         case GOTO: {
-            uint32_t nueva_direccion = atoi(instruccion_recibida->parametros);
+            int32_t nueva_direccion = atoi(instruccion_recibida->parametros);
             pc = nueva_direccion;
             break;
         }
@@ -256,8 +258,8 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
         case DUMP_MEMORY: {
             log_debug(logger, "PID: %d - EXECUTE - DUMP_MEMORY", pid);
 
-            t_buffer* buffer = buffer_create(sizeof(uint32_t));
-            buffer_add_uint32(buffer, pid);
+            t_buffer* buffer = buffer_create(sizeof(int32_t));
+            buffer_add_int32(buffer, pid);
 
             t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_interrupt);
@@ -266,8 +268,8 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
         case EXIT: {
             log_debug(logger, "PID: %d - EXECUTE - EXIT", pid);
 
-            t_buffer* buffer = buffer_create(sizeof(uint32_t));
-            buffer_add_uint32(buffer, pid);
+            t_buffer* buffer = buffer_create(sizeof(int32_t));
+            buffer_add_int32(buffer, pid);
 
             t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_interrupt);
@@ -279,7 +281,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
     }
 
         if(instruccion_recibida->instruccion != GOTO) { 
-            pc++;
+            instruccion->pc++;
         }
 
         log_info(logger, "## PID: %d - Ejecutando: %s - %s", instruccion->pid, t_instruccion_to_string(instruccion_recibida->instruccion), instruccion_recibida->parametros);
@@ -298,26 +300,26 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 }
 
 t_buffer *serializar_cpu_write(cpu_write *data) {
-    t_buffer *buffer = buffer_create(sizeof(uint32_t) * 2 + data->datos_length);
-    buffer_add_uint32(buffer, data->direccion);
-    buffer_add_uint32(buffer, data->datos_length);
+    t_buffer *buffer = buffer_create(sizeof(int32_t) * 2 + data->datos_length);
+    buffer_add_int32(buffer, data->direccion);
+    buffer_add_int32(buffer, data->datos_length);
     buffer_add_string(buffer, data->datos_length, data->datos);
     return buffer;
 }
 
 t_buffer *serializar_cpu_read(cpu_read *data) {
-    t_buffer *buffer = buffer_create(sizeof(uint32_t) * 2);
-    buffer_add_uint32(buffer, data->direccion);
-    buffer_add_uint32(buffer, data->tamanio);
+    t_buffer *buffer = buffer_create(sizeof(int32_t) * 2);
+    buffer_add_int32(buffer, data->direccion);
+    buffer_add_int32(buffer, data->tamanio);
     return buffer;
 }
 
 t_buffer *serializar_t_syscall(t_syscall *data) {
-    t_buffer *buffer = buffer_create(sizeof(uint32_t) * 3 + data->parametros_length);
+    t_buffer *buffer = buffer_create(sizeof(int32_t) * 3 + data->parametros_length);
     buffer_add_uint8(buffer, data->syscall);
-    buffer_add_uint32(buffer, data->parametros_length);
+    buffer_add_int32(buffer, data->parametros_length);
     buffer_add_string(buffer, data->parametros_length, data->parametros);
-    buffer_add_uint32(buffer, data->pid);
+    buffer_add_int32(buffer, data->pid);
     return buffer;
 }
 
@@ -327,17 +329,17 @@ void destruir_t_syscall(t_syscall *data) {
 }
 
 t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* param) {
-    t_buffer *ret = buffer_create(sizeof(uint32_t) * 2);
-    buffer_add_uint32(ret, param->pid);
-    buffer_add_uint32(ret, param->pc);
+    t_buffer *ret = buffer_create(sizeof(int32_t) * 2);
+    buffer_add_int32(ret, param->pid);
+    buffer_add_int32(ret, param->pc);
     return ret;
 }
 
-void check_interrupt(uint32_t pid) {
+void check_interrupt(int32_t pid) {
     t_paquete* paquete = recibir_paquete(fd_interrupt);
     if(paquete != NULL) {
         if (paquete->codigo_operacion == INTERRUPT) {
-            uint32_t pid_interrupcion = buffer_read_uint32(paquete->buffer);
+            int32_t pid_interrupcion = buffer_read_int32(paquete->buffer);
             if(pid_interrupcion == pid) {
                 log_info(logger, "## Llega interrupción al puerto Interrupt");
                 interrupcion = true;
@@ -353,11 +355,11 @@ void check_interrupt(uint32_t pid) {
     destruir_paquete(paquete);
 }
 
-void interrumpir_proceso(uint32_t pid, uint32_t pc) {
+void interrumpir_proceso(int32_t pid, int32_t pc) {
     log_debug(logger, "PID: %d - Interrupción recibida del kernel", pid);
-    t_buffer* buffer = buffer_create(sizeof(uint32_t) * 2);
-    buffer_add_uint32(buffer, pid);
-    buffer_add_uint32(buffer, pc);
+    t_buffer* buffer = buffer_create(sizeof(int32_t) * 2);
+    buffer_add_int32(buffer, pid);
+    buffer_add_int32(buffer, pc);
             
     t_paquete* respuesta = crear_paquete(INTERRUPT, buffer);
     enviar_paquete(respuesta, fd_interrupt);
@@ -405,7 +407,7 @@ void inicializar_tlb() {
 
 }
 
-uint32_t buscar_en_tlb(uint32_t nro_pagina) {
+int32_t buscar_en_tlb(int32_t nro_pagina) {
     entrada_tlb* entrada = entrada_tlb_get_by_pagina(tlb, nro_pagina);
     if (entrada) {
         entrada->tiempo_desde_ultimo_uso = temporal_create();
@@ -438,7 +440,7 @@ void eliminar_entrada_tlb(void *ptr) {
     free(entrada);
 }
 
-entrada_tlb* entrada_tlb_get_by_pagina(t_list* entrada_tlb_list, uint32_t pagina) {
+entrada_tlb* entrada_tlb_get_by_pagina(t_list* entrada_tlb_list, int32_t pagina) {
     bool pagina_equals(void *p_entrada_tlb) {
         entrada_tlb *entrada_tlb_cast = (entrada_tlb*)p_entrada_tlb;
         return entrada_tlb_cast->pagina == pagina;

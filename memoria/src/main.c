@@ -8,8 +8,8 @@ sem_t cpu_handshake;
 sem_t kernel_handshake;
 t_config *config;
 t_list *lista_tablas_por_pid;
-uint32_t tam_memoria_actual;
-uint32_t fd_escucha_memoria;
+int32_t tam_memoria_actual;
+int32_t fd_escucha_memoria;
 
 int main(int argc, char *argv[])
 {
@@ -18,6 +18,8 @@ int main(int argc, char *argv[])
     log_debug(logger, "Config y Logger creados correctamente.");
     //Leo el archivo de configuracion y la guardo en una variable global.
     leer_configuracion(config);
+    memoria_principal = calloc(cfg_memoria->TAM_MEMORIA, 1);
+    inicializar_bitmap(cfg_memoria->TAM_MEMORIA / cfg_memoria->TAM_PAGINA);
 
     // Inicializo diccionario de procesos y su mutex
     diccionario_procesos = dictionary_create();
@@ -62,7 +64,7 @@ int main(int argc, char *argv[])
 
 void handshake_kernel()
 {
-    uint32_t cliente = esperar_cliente(fd_escucha_memoria);
+    int32_t cliente = esperar_cliente(fd_escucha_memoria);
 
     char *identificador = recibir_handshake(cliente);
 
@@ -86,11 +88,12 @@ void handshake_kernel()
     // Loop para atender Kernel
     while (1)
     {
-        uint32_t pid = -1;
+        int32_t pid = -1;
         char* pid_s = "";
         t_proceso* proceso = NULL;
         tablas_por_pid* tablas_proceso = NULL;
         cliente = esperar_cliente(fd_escucha_memoria);
+        log_info(logger, "## Kernel Conectado - FD del socket: %d", cliente);
         t_paquete *paquete = recibir_paquete(cliente);
         if (paquete == NULL)
         {
@@ -108,10 +111,10 @@ void handshake_kernel()
                 pid_s = list_get(keys, tam_diccionario - 1);
                 pid = atoi(pid_s);
                 t_proceso* proceso_aux = dictionary_get(diccionario_procesos, pid_s);
-                uint32_t tam_proceso_aux = proceso_aux->tamanio;
+                int32_t tam_proceso_aux = proceso_aux->tamanio;
                 
                 tablas_por_pid* tabla_proceso = crear_tabla_raiz(pid, tam_proceso_aux);
-                uint32_t indice_marcos = 0; 
+                int32_t indice_marcos = 0; 
                 asignar_marcos(tabla_proceso->tabla_raiz, &tam_proceso_aux, 1, tabla_proceso->marcos, &indice_marcos, proceso_aux->lista_metricas);
 
                 list_add(lista_tablas_por_pid, tabla_proceso);
@@ -120,12 +123,19 @@ void handshake_kernel()
 
                 tam_memoria_actual = tam_memoria_actual - proceso_aux->tamanio;
 
+                t_buffer* buffer_res_save_ins = buffer_create(sizeof(bool));
+                buffer_add_bool(buffer_res_save_ins, true);
+                t_paquete* res_save_ins = crear_paquete(SAVE_INSTRUCTIONS, buffer_res_save_ins);
+                enviar_paquete(res_save_ins, cliente); 
+
+                log_info(logger, "## PID: %d - Proceso Creado - Tamaño: %d", pid, proceso_aux->tamanio);
+
                 break;
             case CONSULTA_MEMORIA_PROCESO:
                 recibir_consulta_memoria(cliente, paquete);
                 break;
             case TERMINAR_PROCESO:
-                pid = buffer_read_uint32(paquete->buffer);
+                pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_remove(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_remove_by_pid(lista_tablas_por_pid, pid);
@@ -137,21 +147,21 @@ void handshake_kernel()
                 free(proceso);
                 break;
             case DUMP_MEMORY_SYSCALL:
-                pid = buffer_read_uint32(paquete->buffer);
+                pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 dump_memory(tablas_proceso, proceso->lista_metricas);
                 break;
             case SUSPENDER_PROCESO:
-                pid = buffer_read_uint32(paquete->buffer);
+                pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 suspender_proceso(tablas_proceso, proceso->lista_metricas);
                 break;
             case DESSUSPENDER_PROCESO:
-                pid = buffer_read_uint32(paquete->buffer);
+                pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
@@ -163,14 +173,15 @@ void handshake_kernel()
         }
 
         destruir_paquete(paquete);
+        liberar_conexion(cliente);
     }
 
     log_info(logger, "Finalizando conexión con Kernel");
-    liberar_conexion(cliente);
+    
     return;
 }
 
-tablas_por_pid* tablas_por_pid_remove_by_pid(t_list* tablas_por_pid_list, uint32_t pid) {
+tablas_por_pid* tablas_por_pid_remove_by_pid(t_list* tablas_por_pid_list, int32_t pid) {
     bool pid_equals(void *p_tablas_por_pid) {
         tablas_por_pid *tablas_por_pid_cast = (tablas_por_pid*)p_tablas_por_pid;
         return tablas_por_pid_cast->pid == pid;
@@ -178,7 +189,7 @@ tablas_por_pid* tablas_por_pid_remove_by_pid(t_list* tablas_por_pid_list, uint32
     return list_remove_by_condition(tablas_por_pid_list, pid_equals);
 }
 
-tablas_por_pid* tablas_por_pid_get_by_pid(t_list* tablas_por_pid_list, uint32_t pid) {
+tablas_por_pid* tablas_por_pid_get_by_pid(t_list* tablas_por_pid_list, int32_t pid) {
     bool pid_equals(void *p_tablas_por_pid) {
         tablas_por_pid *tablas_por_pid_cast = (tablas_por_pid*)p_tablas_por_pid;
         return tablas_por_pid_cast->pid == pid;
@@ -189,7 +200,7 @@ tablas_por_pid* tablas_por_pid_get_by_pid(t_list* tablas_por_pid_list, uint32_t 
 void handshake_cpu()
 {
     sem_wait(&cpu_handshake);
-    uint32_t cliente = esperar_cliente(fd_escucha_memoria);
+    int32_t cliente = esperar_cliente(fd_escucha_memoria);
 
     char *identificador = recibir_handshake(cliente);
 
@@ -219,10 +230,12 @@ void handshake_cpu()
     while (1)
     {
         char* pid_s = NULL;
-        uint32_t pid = -1;
-        uint32_t direccion = -1;
+        int32_t pid = -1;
+        int32_t direccion = -1;
         t_proceso* proceso = NULL;
         t_paquete *paquete = recibir_paquete(cliente);
+        log_debug(logger, "Se recibio paquete de cpu");
+
         if (paquete == NULL)
         {
             log_error(logger, "Error al recibir paquete de CPU");
@@ -233,7 +246,7 @@ void handshake_cpu()
         {
         case FETCH:
             // CPU pide una instrucción
-            proceso_terminado = enviar_instruccion(cliente);
+            proceso_terminado = enviar_instruccion(cliente, paquete);
             if (proceso_terminado)
             {
                 log_debug(logger, "Proceso terminado - instrucción EXIT enviada");
@@ -242,8 +255,8 @@ void handshake_cpu()
         case READ_MEMORIA:
             cpu_read *parametros = deserializar_cpu_read(paquete->buffer);
             char* retorno = (char*)leer_de_memoria(parametros->direccion, parametros->tamanio, parametros->pid);
-            t_buffer *buffer_resp = buffer_create(sizeof(uint32_t) + parametros->tamanio + 1);
-            buffer_add_uint32(buffer_resp, parametros->tamanio + 1);
+            t_buffer *buffer_resp = buffer_create(sizeof(int32_t) + parametros->tamanio + 1);
+            buffer_add_int32(buffer_resp, parametros->tamanio + 1);
             buffer_add_string(buffer_resp, parametros->tamanio + 1, retorno);
             t_paquete *paquete_read = crear_paquete(READ_MEMORIA, buffer_resp);
             enviar_paquete(paquete_read, cliente);
@@ -252,9 +265,24 @@ void handshake_cpu()
             cpu_write *parametros_write = deserializar_cpu_write(paquete->buffer);
             escribir_en_memoria(parametros_write->direccion, parametros_write->datos_length, parametros_write->datos, parametros_write->pid);
             break;
+        case CONSULTA_MARCO:
+            pid = buffer_read_int32(paquete->buffer);
+            int32_t* indices = calloc(cfg_memoria->CANTIDAD_NIVELES, sizeof(int32_t));
+            for(int i = 0; i < cfg_memoria->CANTIDAD_NIVELES; i++) {
+                indices[i] = buffer_read_int32(paquete->buffer);
+            }
+            pid_s = string_itoa(pid);
+            proceso = dictionary_get(diccionario_procesos, pid_s);
+            tablas_por_pid* tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
+            int32_t marco = devolver_marco(tablas_proceso->tabla_raiz, indices, 1, proceso->lista_metricas);
+            t_buffer* buffer_marco = buffer_create(sizeof(int32_t));
+            buffer_add_int32(buffer_marco, marco);
+            t_paquete* respuesta_marco = crear_paquete(CONSULTA_MARCO, buffer_marco);
+            enviar_paquete(respuesta_marco, cliente);
+            free(indices);
         case LEER_PAGINA_COMPLETA:
-            pid = buffer_read_uint32(paquete->buffer);
-            direccion = buffer_read_uint32(paquete->buffer);
+            pid = buffer_read_int32(paquete->buffer);
+            direccion = buffer_read_int32(paquete->buffer);
             pid_s = string_itoa(pid);
             proceso = dictionary_get(diccionario_procesos, pid_s);
             void* contenido_pagina = leer_pagina_completa(direccion, pid, proceso->lista_metricas);
@@ -264,8 +292,8 @@ void handshake_cpu()
             enviar_paquete(respuesta, cliente);
             break;
         case ACTUALIZAR_PAGINA_COMPLETA:
-            pid = buffer_read_uint32(paquete->buffer);
-            direccion = buffer_read_uint32(paquete->buffer);
+            pid = buffer_read_int32(paquete->buffer);
+            direccion = buffer_read_int32(paquete->buffer);
             void *contenido = malloc(cfg_memoria->TAM_PAGINA);
             buffer_read(paquete->buffer, contenido, cfg_memoria->TAM_PAGINA);
             pid_s = string_itoa(pid);
@@ -286,9 +314,9 @@ void handshake_cpu()
 }
 
 //Recibe  un proceso de kernel, con su tamaño, uso funcion verificar_espacio y si hay, devuelvo TRUE.
-bool recibir_consulta_memoria(uint32_t fd_kernel, t_paquete *paquete){
+bool recibir_consulta_memoria(int32_t fd_kernel, t_paquete *paquete){
     // creo buffer para leer el paquete con pid y tamaño que se me envio
-    uint32_t tamanio = buffer_read_uint32(paquete->buffer);
+    int32_t tamanio = buffer_read_int32(paquete->buffer);
     log_debug(logger, "Recibo consulta de espacio para tamaño %d", tamanio);
     bool hay_espacio = verificar_espacio_memoria( tamanio);
     // preparo el paquete de respuesta-creo buffer y le asigno tamaño del bool  que devuelve verificar_espacio_memoria
@@ -324,7 +352,7 @@ void recibir_instrucciones(t_paquete* paquete){
     free(kernelToMemoria);
 }
 
-bool verificar_espacio_memoria(uint32_t tamanio)
+bool verificar_espacio_memoria(int32_t tamanio)
 {
     log_info(logger, "- Tamaño Memoria Total: %d - Tamaño Solicitado: %d - Espacio Disponible: %d",
              cfg_memoria->TAM_MEMORIA,
@@ -339,10 +367,10 @@ kernel_to_memoria *deserializar_kernel_to_memoria(t_buffer *buffer)
 {
     kernel_to_memoria *data = malloc(sizeof(kernel_to_memoria));
 
-    data->archivo_length = buffer_read_uint32(buffer);
+    data->archivo_length = buffer_read_int32(buffer);
     data->archivo = buffer_read_string(buffer, &data->archivo_length);
-    data->tamanio = buffer_read_uint32(buffer);
-    data->pid = buffer_read_uint32(buffer);
+    data->tamanio = buffer_read_int32(buffer);
+    data->pid = buffer_read_int32(buffer);
     return data;
 }
 
@@ -447,10 +475,9 @@ void cargar_instrucciones(char *path_archivo, kernel_to_memoria* proceso_recibid
 }
 
 //Envia la instruccion a CPU y al final verifica si fue EXIT o no.
-bool enviar_instruccion(uint32_t fd_cpu){
-    t_paquete *paquete = recibir_paquete(fd_cpu);
-    uint32_t pid = buffer_read_uint32(paquete->buffer);
-    uint32_t pc = buffer_read_uint32(paquete->buffer);
+bool enviar_instruccion(int32_t fd_cpu, t_paquete* paquete){
+    int32_t pid = buffer_read_int32(paquete->buffer);
+    int32_t pc = buffer_read_int32(paquete->buffer);
 
     char *pid_str = string_itoa(pid);
     t_proceso* proceso = dictionary_get(diccionario_procesos, pid_str);
@@ -465,13 +492,50 @@ bool enviar_instruccion(uint32_t fd_cpu){
     }
 
     struct_memoria_to_cpu *instruccion = list_get(proceso->lista_instrucciones, pc);
-    uint32_t tam_para = string_length(instruccion->parametros);
-    t_paquete *paquete_retorno = crear_paquete(FETCH, buffer_create(0));
-    buffer_add_uint8(paquete_retorno->buffer, instruccion->instruccion);
-    buffer_add_string(paquete_retorno->buffer, tam_para, instruccion->parametros);
+    int32_t tam_para = instruccion->parametros_length;
+    t_buffer* buffer = buffer_create(sizeof(uint8_t) + sizeof(int32_t) + tam_para);
+    buffer_add_uint8(buffer, instruccion->instruccion);
+    buffer_add_int32(buffer, tam_para);
+    buffer_add_string(buffer, tam_para, instruccion->parametros);
+    t_paquete *paquete_retorno = crear_paquete(FETCH, buffer);
+    
     enviar_paquete(paquete_retorno, fd_cpu);
 
+    log_info(logger, "## PID: %d - Obtener instrucción: %d - Instrucción: %s %s", pid, pc, t_instruccion_to_string(instruccion->instruccion), instruccion->parametros);
+
     return instruccion->instruccion == EXIT;
+}
+
+char *t_instruccion_to_string(t_instruccion instruccion) {
+    switch(instruccion){
+        case NOOP:
+            return "NOOP";
+            break;
+        case WRITE:
+            return "WRITE";
+            break;
+        case READ:
+            return "READ";
+            break;
+        case IO_SYSCALL:
+            return "IO_SYSCALL";
+            break;
+        case INIT_PROC:
+            return "INIT_PROC";
+            break;    
+        case GOTO:
+            return "GOTO";
+            break;
+        case DUMP_MEMORY:
+            return "DUMP_MEMORY";
+            break;
+        case EXIT:
+            return "EXIT";
+            break;
+        default:
+            return "";
+            break;
+    }
 }
 
 void leer_configuracion(t_config* config){
@@ -493,28 +557,28 @@ void leer_configuracion(t_config* config){
 /* Funciones para deserializar el CPU_READ y CPU WRITE que teniamos preventivamente*/
 cpu_read *deserializar_cpu_read(t_buffer *data) {
     cpu_read *ret = malloc(sizeof(cpu_read));
-    ret->direccion = buffer_read_uint32(data);
-    ret->tamanio = buffer_read_uint32(data);
+    ret->direccion = buffer_read_int32(data);
+    ret->tamanio = buffer_read_int32(data);
     return ret;
 }
 
 cpu_write *deserializar_cpu_write(t_buffer *data) {
     cpu_write *ret = malloc(sizeof(cpu_write));
-    ret->direccion = buffer_read_uint32(data);
-    ret->datos_length = buffer_read_uint32(data);
+    ret->direccion = buffer_read_int32(data);
+    ret->datos_length = buffer_read_int32(data);
     ret->datos = buffer_read_string(data, &ret->datos_length);
     return ret;
 }
 
 t_buffer* serializar_config_to_cpu(t_config_to_cpu* cfg_to_cpu){
-    t_buffer* buffer = buffer_create(sizeof(uint32_t) * 3);
-    buffer_add_uint32(buffer, cfg_to_cpu->cantidad_niveles);
-    buffer_add_uint32(buffer, cfg_to_cpu->tam_paginas);
-    buffer_add_uint32(buffer, cfg_to_cpu->cant_entradas);
+    t_buffer* buffer = buffer_create(sizeof(int32_t) * 3);
+    buffer_add_int32(buffer, cfg_to_cpu->cantidad_niveles);
+    buffer_add_int32(buffer, cfg_to_cpu->tam_paginas);
+    buffer_add_int32(buffer, cfg_to_cpu->cant_entradas);
     return buffer;
 }
 
-void enviar_config_to_cpu(t_config_to_cpu* cfg_to_cpu, uint32_t socket){
+void enviar_config_to_cpu(t_config_to_cpu* cfg_to_cpu, int32_t socket){
     t_buffer* buffer = serializar_config_to_cpu(cfg_to_cpu);
     t_paquete* paquete = crear_paquete(HANDSHAKE, buffer);
     enviar_paquete(paquete, socket);

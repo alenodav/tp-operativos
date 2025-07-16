@@ -1,11 +1,11 @@
 #include "../include/mmu.h"
 
 
-uint32_t tamanio_pagina;
-uint32_t cant_entradas_tabla;
-uint32_t cant_niveles;
-uint32_t fd_memoria;
-uint32_t ptr_clock;
+int32_t tamanio_pagina;
+int32_t cant_entradas_tabla;
+int32_t cant_niveles;
+int32_t fd_memoria;
+int32_t ptr_clock;
 
 int cant_entradas_tlb;
 
@@ -29,33 +29,33 @@ void recibir_t_config_to_cpu() {
 
 t_config_to_cpu *deserializar_t_config_to_cpu(t_buffer* buffer) {
     t_config_to_cpu *retorno = malloc(sizeof(t_config_to_cpu));
-    retorno->cantidad_niveles = buffer_read_uint32(buffer);
-    retorno->tam_paginas = buffer_read_uint32(buffer);
-    retorno->cant_entradas = buffer_read_uint32(buffer);
+    retorno->cantidad_niveles = buffer_read_int32(buffer);
+    retorno->tam_paginas = buffer_read_int32(buffer);
+    retorno->cant_entradas = buffer_read_int32(buffer);
     return retorno;
 }
 
-uint32_t numero_pagina(uint32_t direccion_logica){
-    return (uint32_t)floor(direccion_logica / tamanio_pagina);
+int32_t numero_pagina(int32_t direccion_logica){
+    return (int32_t)floor(direccion_logica / tamanio_pagina);
 }
 
-uint32_t entrada_nivel_X(uint32_t numero_pagina, uint32_t nivel){
-    return ((uint32_t)(floor(numero_pagina / cant_entradas_tabla ^ (cant_niveles-nivel))) % cant_entradas_tabla);
+int32_t entrada_nivel_X(int32_t numero_pagina, int32_t nivel){
+    return ((int32_t)(floor(numero_pagina / cant_entradas_tabla ^ (cant_niveles-nivel))) % cant_entradas_tabla);
 }
 
-uint32_t desplazamiento(uint32_t direccion_logica){
+int32_t desplazamiento(int32_t direccion_logica){
     return direccion_logica % tamanio_pagina;
 }
 
-uint32_t calcular_direccion_fisica(uint32_t direccion_logica, uint32_t pid) {
-    uint32_t nro_marco = consultar_marco(direccion_logica, pid);
-    uint32_t offset = desplazamiento(direccion_logica);
+int32_t calcular_direccion_fisica(int32_t direccion_logica, int32_t pid) {
+    int32_t nro_marco = consultar_marco(direccion_logica, pid);
+    int32_t offset = desplazamiento(direccion_logica);
     return nro_marco * tamanio_pagina + offset;
 }
 
-uint32_t consultar_marco(uint32_t direccion_logica, uint32_t pid) {
-    uint32_t nro_pagina = numero_pagina(direccion_logica); 
-    uint32_t nro_marco = -1;
+int32_t consultar_marco(int32_t direccion_logica, int32_t pid) {
+    int32_t nro_pagina = numero_pagina(direccion_logica); 
+    int32_t nro_marco = -1;
     if (cant_entradas_tlb != 0) {
         nro_marco = buscar_en_tlb(nro_pagina);
         if(nro_marco != -1) {
@@ -64,7 +64,7 @@ uint32_t consultar_marco(uint32_t direccion_logica, uint32_t pid) {
         }
         log_info(logger, "PID: %d - TLB MISS - Pagina: %d", pid, nro_pagina);
     }
-    uint32_t *indices = calloc(cant_niveles, sizeof(uint32_t));
+    int32_t *indices = calloc(cant_niveles, sizeof(int32_t));
     for (int i = 0; i < cant_niveles; i++) {
         indices[i] = entrada_nivel_X(nro_pagina, i + 1);
     }
@@ -80,22 +80,22 @@ uint32_t consultar_marco(uint32_t direccion_logica, uint32_t pid) {
     return nro_marco;
 }
 
-uint32_t consultar_marco_memoria(uint32_t* indices, uint32_t pid) {
+int32_t consultar_marco_memoria(int32_t* indices, int32_t pid) {
     t_buffer* buffer = serializar_indices_tablas(indices, pid);
     t_paquete* paquete = crear_paquete(CONSULTA_MARCO, buffer);
     enviar_paquete(paquete, fd_memoria);
 
     t_paquete* respuesta = recibir_paquete(fd_memoria);
-    uint32_t marco = buffer_read_uint32(paquete->buffer);
+    int32_t marco = buffer_read_int32(paquete->buffer);
     destruir_paquete(respuesta);
     return marco;
 }
 
-t_buffer* serializar_indices_tablas(uint32_t* indices, uint32_t pid) {
-    t_buffer* buffer = buffer_create(sizeof(uint32_t) * (cant_niveles + 1));
-    buffer_add_uint32(buffer, pid);
+t_buffer* serializar_indices_tablas(int32_t* indices, int32_t pid) {
+    t_buffer* buffer = buffer_create(sizeof(int32_t) * (cant_niveles + 1));
+    buffer_add_int32(buffer, pid);
     for(int i = 0; i < cant_niveles; i++) {
-        buffer_add_uint32(buffer, indices[i]);
+        buffer_add_int32(buffer, indices[i]);
     }
     return buffer;
 }
@@ -117,10 +117,10 @@ entrada_cache* buscar_en_cache(int32_t nro_pagina) {
     return entrada;
 }
 
-void* leer_de_cache(int32_t direccion_logica, int32_t size, uint32_t pid) {
+void* leer_de_cache(int32_t direccion_logica, int32_t size, int32_t pid) {
     usleep(retardo_cache * 1000);
     void* retorno = malloc(size);
-    uint32_t nro_pagina = numero_pagina(direccion_logica);
+    int32_t nro_pagina = numero_pagina(direccion_logica);
     entrada_cache* entrada = buscar_en_cache(nro_pagina);
     int32_t offset = desplazamiento(direccion_logica);
     if(entrada) {
@@ -137,9 +137,9 @@ void* leer_de_cache(int32_t direccion_logica, int32_t size, uint32_t pid) {
     return retorno;
 }
 
-void escribir_en_cache(int32_t direccion_logica, int32_t size, uint32_t pid, void* contenido) {
+void escribir_en_cache(int32_t direccion_logica, int32_t size, int32_t pid, void* contenido) {
     usleep(retardo_cache * 1000);
-    uint32_t nro_pagina = numero_pagina(direccion_logica);
+    int32_t nro_pagina = numero_pagina(direccion_logica);
     entrada_cache* entrada = buscar_en_cache(nro_pagina);
     int32_t offset = desplazamiento(direccion_logica);
     if(entrada) {
@@ -157,12 +157,12 @@ void escribir_en_cache(int32_t direccion_logica, int32_t size, uint32_t pid, voi
     entrada->uso = true;
 }
 
-void agregar_a_cache(uint32_t direccion_logica, uint32_t pid) {
-    uint32_t direccion_fisica = consultar_marco(direccion_logica, pid) * tamanio_pagina;
+void agregar_a_cache(int32_t direccion_logica, int32_t pid) {
+    int32_t direccion_fisica = consultar_marco(direccion_logica, pid) * tamanio_pagina;
 
-    t_buffer* buffer = buffer_create(sizeof(uint32_t));
-    buffer_add_uint32(buffer, pid);
-    buffer_add_uint32(buffer, direccion_fisica);
+    t_buffer* buffer = buffer_create(sizeof(int32_t));
+    buffer_add_int32(buffer, pid);
+    buffer_add_int32(buffer, direccion_fisica);
     t_paquete* paquete = crear_paquete(LEER_PAGINA_COMPLETA, buffer);
     enviar_paquete(paquete, fd_memoria);
 
@@ -189,7 +189,7 @@ void agregar_a_cache(uint32_t direccion_logica, uint32_t pid) {
     }
 }
 
-int32_t correr_algoritmo_cache(uint32_t pid) {
+int32_t correr_algoritmo_cache(int32_t pid) {
     int32_t indice = -1;
     t_list* lista_despues_del_ptr = list_slice(cache_de_paginas, ptr_clock, cant_entradas_cache - ptr_clock);
     t_list* lista_antes_del_ptr = list_take(cache_de_paginas, ptr_clock);
@@ -290,18 +290,18 @@ void eliminar_entrada_cache(void *ptr) {
     free(entrada);
 }
 
-void escribir_pagina_cache_a_memoria(entrada_cache* entrada, uint32_t pid) {
-    uint32_t direccion_fisica = calcular_direccion_fisica(entrada->pagina * tamanio_pagina, pid);
+void escribir_pagina_cache_a_memoria(entrada_cache* entrada, int32_t pid) {
+    int32_t direccion_fisica = calcular_direccion_fisica(entrada->pagina * tamanio_pagina, pid);
     t_buffer* buffer = buffer_create(sizeof(tamanio_pagina));
-    buffer_add_uint32(buffer, pid);
-    buffer_add_uint32(buffer, direccion_fisica);
+    buffer_add_int32(buffer, pid);
+    buffer_add_int32(buffer, direccion_fisica);
     buffer_add(buffer, entrada->contenido, tamanio_pagina);
     t_paquete* paquete = crear_paquete(ACTUALIZAR_PAGINA_COMPLETA, buffer);
     enviar_paquete(paquete, fd_memoria);
     log_info(logger, "PID: %d - Memory Update - Página: %d - Frame: %d", pid, entrada->pagina, direccion_fisica/tamanio_pagina);
 }
 
-entrada_cache* entrada_cache_get_by_pagina(t_list* entrada_cache_list, uint32_t pagina) {
+entrada_cache* entrada_cache_get_by_pagina(t_list* entrada_cache_list, int32_t pagina) {
     bool pagina_equals(void *p_entrada_cache) {
         entrada_cache *entrada_cache_cast = (entrada_cache*)p_entrada_cache;
         return entrada_cache_cast->pagina == pagina;
@@ -309,7 +309,7 @@ entrada_cache* entrada_cache_get_by_pagina(t_list* entrada_cache_list, uint32_t 
     return list_find(entrada_cache_list, pagina_equals);
 }
 
-void eliminar_entradas_cache(uint32_t pid) {
+void eliminar_entradas_cache(int32_t pid) {
     t_list_iterator* cache_de_paginas_iterator = list_iterator_create(cache_de_paginas);
     while(list_iterator_has_next(cache_de_paginas_iterator)) {
         entrada_cache* entrada = list_iterator_next(cache_de_paginas_iterator);

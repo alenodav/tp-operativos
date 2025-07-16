@@ -17,9 +17,9 @@
 // Variables globales
 extern t_log* logger;
 extern t_config* config;
-extern uint32_t fd_dispatch;
-extern uint32_t fd_interrupt;
-extern uint32_t fd_memoria;
+extern int32_t fd_dispatch;
+extern int32_t fd_interrupt;
+extern int32_t fd_memoria;
 bool interrupcion;
 
 void handshake_memoria(void*);
@@ -31,8 +31,8 @@ t_buffer *serializar_cpu_read(cpu_read *data);
 t_buffer *serializar_t_syscall(t_syscall *data);
 void destruir_t_syscall(t_syscall *data);
 t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* param); 
-void check_interrupt(uint32_t pid);
-void interrumpir_proceso(uint32_t pid, uint32_t pc);
+void check_interrupt(int32_t pid);
+void interrumpir_proceso(int32_t pid, int32_t pc);
 char *t_instruccion_to_string(t_instruccion instruccion);
 
 //TLB
@@ -45,7 +45,7 @@ char* algoritmo_tlb;
 void inicializar_tlb();
 
 void correr_algoritmo_tlb();
-entrada_tlb* entrada_tlb_get_by_pagina(t_list* entrada_tlb_list, uint32_t pagina);
+entrada_tlb* entrada_tlb_get_by_pagina(t_list* entrada_tlb_list, int32_t pagina);
 bool es_mas_reciente(void* a, void* b);
 void eliminar_entrada_tlb(void *ptr);
 void eliminar_entradas_tlb();

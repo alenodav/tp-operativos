@@ -45,13 +45,13 @@ int main(int argc, char* argv[]) {
     liberar_conexion(fd_escucha_cpu);
     liberar_conexion(fd_escucha_cpu_interrupt);
 
-    pthread_t planificador_largo_plazo;
-    pthread_create(&planificador_largo_plazo, NULL, (void*)largo_plazo, NULL);
-    pthread_detach(planificador_largo_plazo);
-
     pthread_t planificador_corto_plazo;
     pthread_create(&planificador_corto_plazo, NULL, (void*)corto_plazo, NULL);
     pthread_detach(planificador_corto_plazo);
+
+    pthread_t planificador_largo_plazo;
+    pthread_create(&planificador_largo_plazo, NULL, (void*)largo_plazo, NULL);
+    pthread_detach(planificador_largo_plazo);
 
     getchar();
 
@@ -125,7 +125,7 @@ void finalizar_modulo() {
 }
 
 void escucha_io(){  
-    uint32_t socket_io = esperar_cliente(fd_escucha_io);
+    int32_t socket_io = esperar_cliente(fd_escucha_io);
     char* identificador = recibir_handshake(socket_io);
     if (!string_is_empty(identificador)) {
         log_info(logger, "Handshake IO a Kernel OK.");
@@ -138,9 +138,9 @@ void escucha_io(){
     enviar_handshake(socket_io, "KERNEL");
     
     //test
-    t_buffer* buffer = buffer_create(sizeof(uint32_t)*2);
-    buffer_add_uint32(buffer, 1);
-    buffer_add_uint32(buffer, 1000000*5);
+    t_buffer* buffer = buffer_create(sizeof(int32_t)*2);
+    buffer_add_int32(buffer, 1);
+    buffer_add_int32(buffer, 1000000*5);
     t_paquete* paquete = crear_paquete(IO, buffer);
     enviar_paquete(paquete, socket_io);
     recibir_paquete(socket_io);
@@ -154,8 +154,8 @@ void escucha_io(){
 
 //Creo escucha cpu
 void escucha_cpu(){
-    uint32_t fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));    
-    uint32_t socket_cpu = esperar_cliente(fd_escucha_cpu);
+    int32_t fd_escucha_cpu = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA_DISPATCH"));    
+    int32_t socket_cpu = esperar_cliente(fd_escucha_cpu);
     char *identificador = recibir_handshake(socket_cpu);
     if (string_equals_ignore_case(identificador, "cpu")) {
         log_debug(logger, "Handshake CPU a Kernel OK.");
@@ -172,7 +172,7 @@ void escucha_cpu(){
 
 
 void handshake_memoria() {
-    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
 
     enviar_handshake(fd_conexion_memoria, "KERNEL");
 
@@ -245,9 +245,9 @@ void planificar_fifo_largo_plazo() {
 
 void dessuspender_proceso(t_pcb* pcb) {
     log_debug(logger, "INICIO - enviar_instrucciones - pid:%d", pcb->pid);
-    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
-    t_buffer *buffer = buffer_create(sizeof(uint32_t));
-    buffer_add_uint32(buffer, pcb->pid);
+    int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer *buffer = buffer_create(sizeof(int32_t));
+    buffer_add_int32(buffer, pcb->pid);
     t_paquete *consulta = crear_paquete(DESSUSPENDER_PROCESO, buffer);
     enviar_paquete(consulta, fd_conexion_memoria);
     liberar_conexion(fd_conexion_memoria);
@@ -303,12 +303,12 @@ t_pcb* crear_proceso() {
 bool consultar_a_memoria() {
     kernel_to_memoria *archivo = list_get(archivos_instruccion, 0);
     log_debug(logger, "INICIO - consultar_a_memoria - archivo:%s", archivo->archivo);
-    uint32_t tamanio_proceso = archivo->tamanio;
-    uint32_t pid = archivo->pid;
+    int32_t tamanio_proceso = archivo->tamanio;
+    int32_t pid = archivo->pid;
     bool ret = false;
-    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
-    t_buffer* buffer = buffer_create(sizeof(uint32_t));
-    buffer_add_uint32(buffer, tamanio_proceso);
+    int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer* buffer = buffer_create(sizeof(int32_t));
+    buffer_add_int32(buffer, tamanio_proceso);
     t_paquete* paquete = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer);
     enviar_paquete(paquete, fd_conexion_memoria);
     t_paquete *retorno = recibir_paquete(fd_conexion_memoria);
@@ -326,12 +326,12 @@ bool consultar_a_memoria() {
 
 bool consultar_a_memoria_by_pcb(t_pcb *pcb) {
     log_debug(logger, "INICIO - consultar_a_memoria_by_pcb - pid:%d", pcb->pid);
-    uint32_t tamanio_proceso = pcb->tamanio_proceso;
-    uint32_t pid = pcb->pid;
+    int32_t tamanio_proceso = pcb->tamanio_proceso;
+    int32_t pid = pcb->pid;
     bool ret = false;
-    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
-    t_buffer* buffer = buffer_create(sizeof(uint32_t));
-    buffer_add_uint32(buffer, tamanio_proceso);
+    int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer* buffer = buffer_create(sizeof(int32_t));
+    buffer_add_int32(buffer, tamanio_proceso);
     t_paquete* paquete = crear_paquete(CONSULTA_MEMORIA_PROCESO, buffer);
     enviar_paquete(paquete, fd_conexion_memoria);
     t_paquete *retorno = recibir_paquete(fd_conexion_memoria);
@@ -350,21 +350,22 @@ bool consultar_a_memoria_by_pcb(t_pcb *pcb) {
 void enviar_instrucciones() {
     kernel_to_memoria *archivo = list_remove(archivos_instruccion, 0);
     log_debug(logger, "INICIO - enviar_instrucciones - archivo:%s", archivo->archivo);
-    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
     t_buffer *buffer = serializar_kernel_to_memoria(archivo);
     t_paquete *consulta = crear_paquete(SAVE_INSTRUCTIONS, buffer);
     enviar_paquete(consulta, fd_conexion_memoria);
+    t_paquete* respuesta = recibir_paquete(fd_conexion_memoria);
     liberar_conexion(fd_conexion_memoria);
     free(archivo);
     return;
 }
 
 t_buffer *serializar_kernel_to_memoria(kernel_to_memoria* archivo) {
-    t_buffer* buffer = buffer_create(sizeof(uint32_t) * 3 + archivo->archivo_length);
-    buffer_add_uint32(buffer, archivo->archivo_length);
+    t_buffer* buffer = buffer_create(sizeof(int32_t) * 3 + archivo->archivo_length);
+    buffer_add_int32(buffer, archivo->archivo_length);
     buffer_add_string(buffer, archivo->archivo_length, archivo->archivo);
-    buffer_add_uint32(buffer, archivo->tamanio);
-    buffer_add_uint32(buffer, archivo->pid);
+    buffer_add_int32(buffer, archivo->tamanio);
+    buffer_add_int32(buffer, archivo->pid);
     return buffer;
 }
 
@@ -378,11 +379,11 @@ void pasar_ready(t_pcb *pcb, t_estado_metricas* metricas) {
     sem_post(&sem_corto_plazo);
 }
 
-bool terminar_proceso_memoria (uint32_t pid) {
+bool terminar_proceso_memoria (int32_t pid) {
     bool retorno = false;
-    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
-    t_buffer *buffer = buffer_create(sizeof(uint32_t));
-    buffer_add_uint32(buffer, pid);
+    int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer *buffer = buffer_create(sizeof(int32_t));
+    buffer_add_int32(buffer, pid);
     t_paquete *paquete = crear_paquete(TERMINAR_PROCESO, buffer);
     enviar_paquete(paquete, fd_conexion_memoria);
     t_paquete *respuesta = recibir_paquete(fd_conexion_memoria);
@@ -403,7 +404,7 @@ bool terminar_proceso_memoria (uint32_t pid) {
     return retorno;
 }
 
-void terminar_proceso(uint32_t pid) {
+void terminar_proceso(int32_t pid) {
     bool consulta_memoria = terminar_proceso_memoria(pid);
     if (!consulta_memoria) {
         return;
@@ -424,7 +425,7 @@ void terminar_proceso(uint32_t pid) {
     return;
 }
 
-t_pcb* pcb_remove_by_pid(t_list* pcb_list, uint32_t pid) {
+t_pcb* pcb_remove_by_pid(t_list* pcb_list, int32_t pid) {
     bool pid_equals(void *pcb) {
         t_pcb *pcb_cast = (t_pcb*)pcb;
         return pcb_cast->pid == pid;
@@ -432,7 +433,7 @@ t_pcb* pcb_remove_by_pid(t_list* pcb_list, uint32_t pid) {
     return list_remove_by_condition(pcb_list, pid_equals);
 }
 
-t_pcb* pcb_get_by_pid(t_list* pcb_list, uint32_t pid) {
+t_pcb* pcb_get_by_pid(t_list* pcb_list, int32_t pid) {
     bool pid_equals(void *pcb) {
         t_pcb *pcb_cast = (t_pcb*)pcb;
         return pcb_cast->pid == pid;
@@ -536,7 +537,7 @@ void administrar_cpus_dispatch() {
     while (inicio_modulo) {
         log_debug(logger, "Espero conexiones de cpu dispatch con fd=%d.", fd_escucha_cpu);
         pthread_t thread;
-        uint32_t *socket_cpu = malloc(sizeof(uint32_t));
+        int32_t *socket_cpu = malloc(sizeof(int32_t));
         *socket_cpu = esperar_cliente(fd_escucha_cpu);
         if (*socket_cpu != -1) {
             pthread_create(&thread, NULL, (void*)agregar_cpu_dispatch, socket_cpu);
@@ -545,7 +546,7 @@ void administrar_cpus_dispatch() {
     } 
 }
 
-void agregar_cpu_dispatch(uint32_t* socket) {
+void agregar_cpu_dispatch(int32_t* socket) {
     log_debug(logger, "Recibo conexion de cpu dispatch con fd=%d.", *socket);
     char *identificador = recibir_handshake(*socket);
     enviar_handshake(*socket, "KERNEL");
@@ -564,7 +565,7 @@ void administrar_cpus_interrupt() {
     while (inicio_modulo) {
         log_debug(logger, "Espero conexiones de cpu interrupt con fd=%d.", fd_escucha_cpu_interrupt);
         pthread_t thread;
-        uint32_t *socket_cpu = malloc(sizeof(uint32_t));
+        int32_t *socket_cpu = malloc(sizeof(int32_t));
         *socket_cpu = esperar_cliente(fd_escucha_cpu_interrupt);
         if(*socket_cpu != -1) {
             pthread_create(&thread, NULL, (void*)agregar_cpu_interrupt, socket_cpu);
@@ -573,7 +574,7 @@ void administrar_cpus_interrupt() {
     } 
 }
 
-void agregar_cpu_interrupt(uint32_t* socket) {
+void agregar_cpu_interrupt(int32_t* socket) {
     log_debug(logger, "Recibo conexion de cpu interrupt con fd=%d.", *socket);
     char *identificador = recibir_handshake(*socket);
     enviar_handshake(*socket, "KERNEL");
@@ -600,14 +601,14 @@ void administrar_dispositivos_io () {
     while (1) {
         log_debug(logger, "Espero conexiones de io con fd=%d.", fd_escucha_io);
         pthread_t thread;
-        uint32_t *socket_io = malloc(sizeof(uint32_t));
+        int32_t *socket_io = malloc(sizeof(int32_t));
         *socket_io = esperar_cliente(fd_escucha_io);
         pthread_create(&thread, NULL, (void*)agregar_io, socket_io);
         pthread_detach(thread);
     } 
 }
 
-void agregar_io (uint32_t *socket) {
+void agregar_io (int32_t *socket) {
     log_debug(logger, "Recibo conexion de io con fd=%d.", *socket);
     char *identificador = recibir_handshake(*socket);
     if (!string_is_empty(identificador)) {
@@ -636,7 +637,7 @@ void agregar_io (uint32_t *socket) {
     sem_post(&mutex_io);
 }
 
-void ejecutar_io_syscall (uint32_t pid, char* id_io, uint32_t tiempo) {
+void ejecutar_io_syscall (int32_t pid, char* id_io, int32_t tiempo) {
     t_list *io_buscada = io_filter_by_id(id_io);
     if (list_size(io_buscada) < 1) {
         terminar_proceso(pid);
@@ -716,7 +717,7 @@ void manejar_respuesta_io(t_io *io_espera) {
     return;
 }
 
-void desbloquear_proceso(uint32_t pid) {
+void desbloquear_proceso(int32_t pid) {
     sem_wait(&mutex_blocked);
     t_pcb *pcb = pcb_remove_by_pid(cola_blocked, pid);
     sem_post(&mutex_blocked);
@@ -768,9 +769,9 @@ bool io_liberada(void* io) {
 }
 
 t_buffer *serializar_kernel_to_io (kernel_to_io* data) {
-    t_buffer *buffer = buffer_create(sizeof(uint32_t) * 2);
-    buffer_add_uint32(buffer, data->pid);
-    buffer_add_uint32(buffer, data->tiempo_bloqueo);
+    t_buffer *buffer = buffer_create(sizeof(int32_t) * 2);
+    buffer_add_int32(buffer, data->pid);
+    buffer_add_int32(buffer, data->tiempo_bloqueo);
     return buffer;
 }
 
@@ -828,7 +829,7 @@ void pasar_exec(t_pcb *pcb) {
     sem_post(&mutex_execute);
 }
 
-void enviar_kernel_to_cpu(uint32_t socket, t_pcb *pcb) {
+void enviar_kernel_to_cpu(int32_t socket, t_pcb *pcb) {
     kernel_to_cpu *proceso = malloc(sizeof(kernel_to_cpu));
     proceso->pc = pcb->pc;
     proceso->pid = pcb->pid;
@@ -839,9 +840,9 @@ void enviar_kernel_to_cpu(uint32_t socket, t_pcb *pcb) {
 }
 
 t_buffer *serializar_kernel_to_cpu(kernel_to_cpu* param) {
-    t_buffer *ret = buffer_create(sizeof(uint32_t) * 2);
-    buffer_add_uint32(ret, param->pid);
-    buffer_add_uint32(ret, param->pc);
+    t_buffer *ret = buffer_create(sizeof(int32_t) * 2);
+    buffer_add_int32(ret, param->pid);
+    buffer_add_int32(ret, param->pc);
     return ret;
 }
 
@@ -858,7 +859,7 @@ void atender_respuesta_cpu(t_cpu *cpu) {
         case INIT_PROC:
             parametros = string_split(syscall_recibida->parametros, " ");
             char* archivo = string_duplicate(parametros[0]);
-            uint32_t tamanio_proceso = atoi(parametros[1]);
+            int32_t tamanio_proceso = atoi(parametros[1]);
             ejecutar_init_proc(syscall_recibida->pid, archivo, tamanio_proceso, cpu);
             string_iterate_lines(parametros, (void*)free);
             free(parametros);
@@ -866,7 +867,7 @@ void atender_respuesta_cpu(t_cpu *cpu) {
         case IO_SYSCALL:
             parametros = string_split(syscall_recibida->parametros, " ");
             char* dispositivo = string_duplicate(parametros[0]);
-            uint32_t tiempo = atoi(parametros[1]);
+            int32_t tiempo = atoi(parametros[1]);
             ejecutar_io_syscall(syscall_recibida->pid, dispositivo, tiempo);
             string_iterate_lines(parametros, (void*)free);
             free(parametros);
@@ -916,13 +917,13 @@ char *t_instruccion_to_string(t_instruccion instruccion) {
 t_syscall *deserializar_t_syscall(t_buffer* buffer) {
     t_syscall* ret = malloc(sizeof(t_syscall));
     ret->syscall = buffer_read_uint8(buffer);
-    ret->parametros_length = buffer_read_uint32(buffer);
+    ret->parametros_length = buffer_read_int32(buffer);
     ret->parametros = buffer_read_string(buffer, &ret->parametros_length);
-    ret->pid = buffer_read_uint32(buffer);
+    ret->pid = buffer_read_int32(buffer);
     return ret;
 }
 
-void ejecutar_init_proc(uint32_t pid, char* nombre_archivo, uint32_t tamanio_proceso, t_cpu* cpu) {
+void ejecutar_init_proc(int32_t pid, char* nombre_archivo, int32_t tamanio_proceso, t_cpu* cpu) {
     kernel_to_memoria *archivo_inicial = malloc(sizeof(kernel_to_memoria));
     archivo_inicial->archivo = nombre_archivo;
     archivo_inicial->archivo_length = string_length(archivo_inicial->archivo) + 1;
@@ -933,7 +934,7 @@ void ejecutar_init_proc(uint32_t pid, char* nombre_archivo, uint32_t tamanio_pro
     enviar_kernel_to_cpu(cpu->socket_dispatch, pcb);
 }
 
-void ejecutar_dump_memory(uint32_t pid) {
+void ejecutar_dump_memory(int32_t pid) {
     log_debug(logger, "INICIO - ejecutar_dump_memory - pid:%d", pid);
     sem_wait(&mutex_execute);
     t_pcb* proceso = pcb_remove_by_pid(cola_exec, pid);
@@ -945,9 +946,9 @@ void ejecutar_dump_memory(uint32_t pid) {
 
     pasar_blocked(proceso, "DUMP_MEMORY");
 
-    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
-    t_buffer *buffer = buffer_create(sizeof(uint32_t));
-    buffer_add_uint32(buffer, pid);
+    int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer *buffer = buffer_create(sizeof(int32_t));
+    buffer_add_int32(buffer, pid);
     t_paquete *paquete = crear_paquete(DUMP_MEMORY_SYSCALL, buffer);
     enviar_paquete(paquete, fd_conexion_memoria);
 
@@ -984,9 +985,9 @@ void suspender_proceso(t_pcb *proceso) {
     sem_post(&mutex_blocked);
     pasar_susp_blocked(proceso);
 
-    uint32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
-    t_buffer *buffer = buffer_create(sizeof(uint32_t));
-    buffer_add_uint32(buffer, proceso->pid);
+    int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
+    t_buffer *buffer = buffer_create(sizeof(int32_t));
+    buffer_add_int32(buffer, proceso->pid);
     t_paquete *paquete = crear_paquete(SUSPENDER_PROCESO, buffer);
     enviar_paquete(paquete, fd_conexion_memoria);
     liberar_conexion(fd_conexion_memoria);
@@ -1029,7 +1030,7 @@ void planificar_sjf_corto_plazo() {
     }
 }
 
-uint32_t estimar_sjf (t_pcb* pcb) {
+int32_t estimar_sjf (t_pcb* pcb) {
     t_estado_metricas* metrica_exec = list_get(pcb->metricas, EXEC);
     if (metrica_exec->MT == NULL) {
         return (1-alfa)*pcb->rafaga_estimada;
@@ -1098,9 +1099,9 @@ void* mayor_rafaga (void* un_pcb, void* otro_pcb) {
 }
 
 void interrumpir_proceso(t_pcb* proceso, t_cpu* cpu) {
-    t_buffer *buffer = buffer_create(sizeof(uint32_t));
+    t_buffer *buffer = buffer_create(sizeof(int32_t));
 
-    buffer_add_uint32(buffer, proceso->pid);
+    buffer_add_int32(buffer, proceso->pid);
     t_paquete *paquete = crear_paquete(INTERRUPT, buffer);
 
     enviar_paquete(paquete, cpu->socket_interrupt);
@@ -1117,7 +1118,7 @@ void interrumpir_proceso(t_pcb* proceso, t_cpu* cpu) {
 
 kernel_to_cpu *deserializar_kernel_to_cpu(t_buffer* buffer) {
     kernel_to_cpu *paquete_proceso = malloc(sizeof(kernel_to_cpu));
-    paquete_proceso->pid = buffer_read_uint32(buffer);
-    paquete_proceso->pc = buffer_read_uint32(buffer);
+    paquete_proceso->pid = buffer_read_int32(buffer);
+    paquete_proceso->pc = buffer_read_int32(buffer);
     return paquete_proceso;
 }
