@@ -24,15 +24,18 @@ int main(int argc, char *argv[])
     pthread_mutex_init(&mutex_diccionario, NULL);
     sem_init(&cpu_handshake, 0, 0);
     sem_init(&kernel_handshake, 0, 0);
+    sem_init(&mutex_memoria, 0, 1);
     log_debug(logger, "Diccionario de procesos creado correctamente.");
     tam_memoria_actual = memoria_cfg->TAM_MEMORIA;
 
     uint32_t fd_escucha_memoria = iniciar_servidor(config_get_string_value(config, "PUERTO_ESCUCHA"));
 
-    // Thread para CPU;
-    pthread_t thread_escucha_cpu;
-    pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, &fd_escucha_memoria);
-    pthread_detach(thread_escucha_cpu);
+    // Threads para CPU;
+    for (int i = 0; i < memoria_cfg->CANT_CPU; i++) {
+        pthread_t thread_escucha_cpu;
+        pthread_create(&thread_escucha_cpu, NULL, (void*)handshake_cpu, &fd_escucha_memoria);
+        pthread_detach(thread_escucha_cpu);
+    }
 
     // Thread para atender a Kernel
     pthread_t thread_escucha_kernel;
@@ -43,6 +46,7 @@ int main(int argc, char *argv[])
 
     sem_destroy(&cpu_handshake);
     sem_destroy(&kernel_handshake);
+    sem_destroy(&mutex_memoria);
     liberar_conexion(fd_escucha_memoria);
     config_destroy(config);
     liberar_diccionario(diccionario_procesos);
@@ -209,10 +213,15 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
     cfg_to_cpu->cant_entradas = memoria_cfg->ENTRADAS_POR_TABLA;
     enviar_config_to_cpu(cfg_to_cpu, cliente);
     sem_post(&kernel_handshake);
+    sem_post(&cpu_handshake);
     bool proceso_terminado = false;
     // Loop para atender peticiones de CPU
-    while (!proceso_terminado)
+    while (1)
     {
+        char* pid_s = NULL;
+        uint32_t pid = -1;
+        uint32_t direccion = -1;
+        t_proceso* proceso = NULL;
         t_paquete *paquete = recibir_paquete(cliente);
         if (paquete == NULL)
         {
@@ -227,23 +236,41 @@ void handshake_cpu(uint32_t fd_escucha_memoria)
             proceso_terminado = enviar_instruccion(cliente);
             if (proceso_terminado)
             {
-                log_info(logger, "Proceso terminado - instrucción EXIT enviada");
+                log_debug(logger, "Proceso terminado - instrucción EXIT enviada");
             }
             break;
         case READ_MEMORIA:
-            // TODO: Implementar lectura de memoria
             cpu_read *parametros = deserializar_cpu_read(paquete->buffer);
             char* retorno = (char*)leer_de_memoria(parametros->direccion, parametros->tamanio, parametros->pid);
-            t_buffer *buffer_read = buffer_create(sizeof(uint32_t) + parametros->tamanio + 1);
-            buffer_add_uint32(buffer_read, parametros->tamanio + 1);
-            buffer_add_string(buffer_read, parametros->tamanio + 1, retorno);
-            t_paquete *paquete_read = crear_paquete(READ_MEMORIA, buffer_read);
+            t_buffer *buffer_resp = buffer_create(sizeof(uint32_t) + parametros->tamanio + 1);
+            buffer_add_uint32(buffer_resp, parametros->tamanio + 1);
+            buffer_add_string(buffer_resp, parametros->tamanio + 1, retorno);
+            t_paquete *paquete_read = crear_paquete(READ_MEMORIA, buffer_resp);
             enviar_paquete(paquete_read, cliente);
             break;
         case WRITE_MEMORIA:
-            // TODO: Implementar escritura en memoria
             cpu_write *parametros_write = deserializar_cpu_write(paquete->buffer);
             escribir_en_memoria(parametros_write->direccion, parametros_write->datos_length, parametros_write->datos, parametros_write->pid);
+            break;
+        case LEER_PAGINA_COMPLETA:
+            pid = buffer_read_uint32(paquete->buffer);
+            direccion = buffer_read_uint32(paquete->buffer);
+            pid_s = string_itoa(pid);
+            proceso = dictionary_get(diccionario_procesos, pid_s);
+            void* contenido_pagina = leer_pagina_completa(direccion, pid, proceso->lista_metricas);
+            t_buffer* buffer_leer = buffer_create(memoria_cfg->TAM_PAGINA);
+            buffer_add(buffer_leer, contenido_pagina, memoria_cfg->TAM_PAGINA);
+            t_paquete* respuesta = crear_paquete(LEER_PAGINA_COMPLETA, buffer_leer);
+            enviar_paquete(respuesta, cliente);
+            break;
+        case ACTUALIZAR_PAGINA_COMPLETA:
+            pid = buffer_read_uint32(paquete->buffer);
+            direccion = buffer_read_uint32(paquete->buffer);
+            void *contenido = malloc(memoria_cfg->TAM_PAGINA);
+            buffer_read(paquete->buffer, contenido, memoria_cfg->TAM_PAGINA);
+            pid_s = string_itoa(pid);
+            proceso = dictionary_get(diccionario_procesos, pid_s);
+            actualizar_pagina_completa(direccion, contenido, pid, proceso->lista_metricas);
             break;
         default:
             log_error(logger, "Operación desconocida de CPU");
@@ -449,6 +476,7 @@ bool enviar_instruccion(uint32_t fd_cpu){
 }
 
 void leer_configuracion(t_config* config){
+    cfg_memoria = malloc(sizeof(t_config_memoria));
     cfg_memoria->PUERTO_ESCUCHA = config_get_string_value(config, "PUERTO_ESCUCHA");
     cfg_memoria->TAM_MEMORIA = config_get_int_value(config, "TAM_MEMORIA");
     cfg_memoria->TAM_PAGINA = config_get_int_value(config, "TAM_PAGINA");
@@ -460,6 +488,7 @@ void leer_configuracion(t_config* config){
     cfg_memoria->LOG_LEVEL = config_get_string_value(config, "LOG_LEVEL");
     cfg_memoria->DUMP_PATH = config_get_string_value(config, "DUMP_PATH");
     cfg_memoria->PATH_INSTRUCCIONES = config_get_string_value(config, "PATH_INSTRUCCIONES"); 
+    cfg_memoria->CANT_CPU = config_get_int_value(config, "CANT_CPU");
 } 
 
 /* Funciones para deserializar el CPU_READ y CPU WRITE que teniamos preventivamente*/

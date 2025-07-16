@@ -161,6 +161,7 @@ void agregar_a_cache(uint32_t direccion_logica, uint32_t pid) {
     uint32_t direccion_fisica = consultar_marco(direccion_logica, pid) * tamanio_pagina;
 
     t_buffer* buffer = buffer_create(sizeof(uint32_t));
+    buffer_add_uint32(buffer, pid);
     buffer_add_uint32(buffer, direccion_fisica);
     t_paquete* paquete = crear_paquete(LEER_PAGINA_COMPLETA, buffer);
     enviar_paquete(paquete, fd_memoria);
@@ -292,6 +293,7 @@ void eliminar_entrada_cache(void *ptr) {
 void escribir_pagina_cache_a_memoria(entrada_cache* entrada, uint32_t pid) {
     uint32_t direccion_fisica = calcular_direccion_fisica(entrada->pagina * tamanio_pagina, pid);
     t_buffer* buffer = buffer_create(sizeof(tamanio_pagina));
+    buffer_add_uint32(buffer, pid);
     buffer_add_uint32(buffer, direccion_fisica);
     buffer_add(buffer, entrada->contenido, tamanio_pagina);
     t_paquete* paquete = crear_paquete(ACTUALIZAR_PAGINA_COMPLETA, buffer);

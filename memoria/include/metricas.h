@@ -8,9 +8,6 @@
 #include "common.h"
 
 
-
-
-
 void mostrar_metricas(t_metricas* metricas);
 
 #endif

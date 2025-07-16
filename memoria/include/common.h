@@ -16,6 +16,7 @@
 extern t_log *logger;
 extern t_dictionary* diccionario_procesos;
 extern pthread_mutex_t mutex_diccionario;
+extern sem_t mutex_memoria;
 
 /*Funciones para el handshake inicial*/
 
@@ -47,6 +48,7 @@ typedef struct{
     char* LOG_LEVEL;
     char* DUMP_PATH;
     char* PATH_INSTRUCCIONES;
+    int CANT_CPU;
 } t_config_memoria;
 
 extern t_config_memoria *memoria_cfg;

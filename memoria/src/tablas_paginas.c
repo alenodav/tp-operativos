@@ -6,6 +6,7 @@
 
 t_config_memoria *memoria_cfg;
 t_memoria* memoria_principal;
+sem_t mutex_memoria;
 
 tabla_paginas* crear_tabla(uint32_t nivel){
     tabla_paginas* tabla = malloc(sizeof(tabla_paginas));
@@ -72,14 +73,18 @@ uint32_t devolver_marco(tabla_paginas* tabla_actual, uint32_t* indices, uint32_t
 void* leer_pagina_completa(uint32_t direccion_fisica, uint32_t pid, t_metricas *metricas_proceso) {
     log_info(logger, "## PID: %d - Lectura - Dir. Física: %d - Tamaño: %d", pid, direccion_fisica, memoria_cfg->TAM_PAGINA);
     void* retorno = malloc(memoria_cfg->TAM_PAGINA);
+    sem_wait(&mutex_memoria);
     memcpy(retorno, memoria_principal->datos + direccion_fisica, memoria_cfg->TAM_PAGINA);
+    sem_post(&mutex_memoria);
     metricas_proceso->cantidad_lecturas++;
     return retorno;
 }
 
 bool actualizar_pagina_completa(uint32_t direccion_fisica, void* pagina, uint32_t pid, t_metricas *metricas_proceso) {
     log_info(logger, "## PID: %d - Escritura - Dir. Física: %d - Tamaño: %d", pid, direccion_fisica, memoria_cfg->TAM_PAGINA);
+    sem_wait(&mutex_memoria);
     memcpy(memoria_principal->datos + direccion_fisica, pagina, memoria_cfg->TAM_PAGINA);
+    sem_post(&mutex_memoria);
     metricas_proceso->cantidad_escrituras++;
     return true;
 }

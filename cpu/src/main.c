@@ -45,6 +45,7 @@ void handshake_memoria(void* arg){
     else {
         log_error(logger, "Handshake Memoria a CPU-%s error.",id_cpu);
     }
+    recibir_t_config_to_cpu();
 
     free(identificador);
     sem_post(&sem_handshake);
