@@ -107,9 +107,8 @@ void handshake_kernel()
             case SAVE_INSTRUCTIONS:
                 recibir_instrucciones(paquete);
                 //si guardo las instrucciones signifca que "admiti" un proceso entonces creo las tablas.
-                int tam_diccionario = dictionary_size(diccionario_procesos);
                 t_list* keys = dictionary_keys(diccionario_procesos);
-                pid_s = list_get(keys, tam_diccionario - 1);
+                pid_s = list_get(keys, 0);
                 pid = atoi(pid_s);
                 t_proceso* proceso_aux = dictionary_get(diccionario_procesos, pid_s);
                 int32_t tam_proceso_aux = proceso_aux->tamanio;
@@ -144,6 +143,7 @@ void handshake_kernel()
 
                 liberar_espacio_memoria(tablas_proceso, proceso->tamanio, proceso->lista_metricas);
                 liberar_lista_instrucciones(proceso->lista_instrucciones);
+                tam_memoria_actual = tam_memoria_actual + proceso->tamanio;
                 free(proceso->lista_metricas);
                 free(proceso);
                 break;
@@ -346,7 +346,7 @@ void recibir_instrucciones(t_paquete* paquete){
     kernel_to_memoria *kernelToMemoria = deserializar_kernel_to_memoria(paquete->buffer);
 
     log_info(logger, "Recibo archivo con instrucciones para PID %d", kernelToMemoria->pid);
-    char *path_archivo = cfg_memoria->PATH_INSTRUCCIONES;
+    char *path_archivo = string_duplicate(cfg_memoria->PATH_INSTRUCCIONES);
     string_append(&path_archivo, kernelToMemoria->archivo);
 
     

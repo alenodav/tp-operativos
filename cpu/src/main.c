@@ -238,7 +238,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             log_debug(logger, "PID: %d - EXECUTE - INIT_PROC - Parámetros: %s", pid, instruccion_recibida->parametros);
 
             t_syscall *syscall = malloc(sizeof(t_syscall));
-            syscall->syscall = IO_SYSCALL;
+            syscall->syscall = INIT_PROC;
             syscall->parametros = instruccion_recibida->parametros;
             syscall->parametros_length = strlen(instruccion_recibida->parametros);
             syscall->pid = pid;
@@ -264,13 +264,14 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             
             t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_dispatch);
+            destruir_t_syscall(syscall);
             break;
         }
         case EXIT: {
             log_debug(logger, "PID: %d - EXECUTE - EXIT", pid);
 
             t_syscall *syscall = malloc(sizeof(t_syscall));
-            syscall->syscall = DUMP_MEMORY;
+            syscall->syscall = EXIT;
             syscall->parametros = instruccion_recibida->parametros;
             syscall->parametros_length = strlen(instruccion_recibida->parametros);
             syscall->pid = pid;
@@ -279,6 +280,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 
             t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_dispatch);
+            destruir_t_syscall(syscall);
             break;
         }
         default:
@@ -322,7 +324,7 @@ t_buffer *serializar_cpu_read(cpu_read *data) {
 }
 
 t_buffer *serializar_t_syscall(t_syscall *data) {
-    t_buffer *buffer = buffer_create(sizeof(int32_t) * 3 + data->parametros_length);
+    t_buffer *buffer = buffer_create(sizeof(int32_t) * 3 + sizeof(uint8_t) + data->parametros_length);
     buffer_add_uint8(buffer, data->syscall);
     buffer_add_int32(buffer, data->parametros_length);
     buffer_add_string(buffer, data->parametros_length, data->parametros);

@@ -355,6 +355,7 @@ void enviar_instrucciones() {
     t_paquete *consulta = crear_paquete(SAVE_INSTRUCTIONS, buffer);
     enviar_paquete(consulta, fd_conexion_memoria);
     t_paquete* respuesta = recibir_paquete(fd_conexion_memoria);
+    destruir_paquete(respuesta);
     liberar_conexion(fd_conexion_memoria);
     free(archivo);
     return;
@@ -756,7 +757,7 @@ t_list *io_filter_by_id (char *id) {
 t_io_queue *io_queue_find_by_id (char *id) {
     t_io_queue *io_ret = malloc(sizeof(t_io_queue));
     bool id_equals(void *io) {
-        t_io_queue *io_cast = (t_io_queue*)io_cast;
+        t_io_queue *io_cast = (t_io_queue*)io;
         return string_equals_ignore_case(io_cast->id, id);
     }   
     io_ret = list_find(io_queue_list, id_equals);
@@ -932,9 +933,10 @@ void ejecutar_init_proc(int32_t pid, char* nombre_archivo, int32_t tamanio_proce
     archivo_inicial->archivo_length = string_length(archivo_inicial->archivo) + 1;
     archivo_inicial->tamanio = tamanio_proceso;
     list_add(archivos_instruccion, archivo_inicial);
-    sem_post(&sem_largo_plazo);
+    
     t_pcb *pcb = pcb_get_by_pid(cola_exec, pid);
     enviar_kernel_to_cpu(cpu->socket_dispatch, pcb);
+    sem_post(&sem_largo_plazo);
 }
 
 void ejecutar_dump_memory(int32_t pid) {
