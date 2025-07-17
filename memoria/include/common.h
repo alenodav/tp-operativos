@@ -82,7 +82,7 @@ extern t_list *lista_tablas_por_pid;
 
 void leer_configuracion(t_config *);
 bool recibir_consulta_memoria(int32_t, t_paquete*);
-void recibir_instrucciones(t_paquete*);
+int32_t recibir_instrucciones(t_paquete* paquete);
 bool verificar_espacio_memoria(int32_t);
 kernel_to_memoria* deserializar_kernel_to_memoria(t_buffer*);
 void cargar_instrucciones(char *path_archivo, kernel_to_memoria* proceso_recibido);
@@ -98,6 +98,7 @@ t_buffer* serializar_config_to_cpu(t_config_to_cpu* cfg_to_cpu);
 void enviar_config_to_cpu(t_config_to_cpu* cfg_to_cpu, int32_t socket);
 char *t_instruccion_to_string(t_instruccion instruccion);
 void inicializar_metricas(t_metricas* metricas);
+
 
 void* leer_pagina_completa(int32_t direccion_fisica, int32_t pid, t_metricas *metricas_proceso);
 bool actualizar_pagina_completa(int32_t direccion_fisica, void* pagina, int32_t pid, t_metricas *metricas_proceso);

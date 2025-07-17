@@ -67,6 +67,7 @@ void handshake_kernel()
 {
     int32_t cliente = esperar_cliente(fd_escucha_memoria);
 
+    log_info(logger, "## Kernel Conectado - FD del socket: %d", cliente);
     char *identificador = recibir_handshake(cliente);
 
     if (string_equals_ignore_case(identificador, "KERNEL"))
@@ -85,7 +86,9 @@ void handshake_kernel()
     enviar_handshake(cliente, "MEMORIA");
     liberar_conexion(cliente);
     sem_post(&cpu_handshake);
-    sem_wait(&kernel_handshake);
+    for(int i = 0; i < cfg_memoria->CANT_CPU; i++) {
+        sem_wait(&kernel_handshake);
+    }
     // Loop para atender Kernel
     while (1)
     {
@@ -104,12 +107,12 @@ void handshake_kernel()
 
         switch (paquete->codigo_operacion)
         {
-            case SAVE_INSTRUCTIONS:
-                recibir_instrucciones(paquete);
+            case SAVE_INSTRUCTIONS: {
+                pid = recibir_instrucciones(paquete);
                 //si guardo las instrucciones signifca que "admiti" un proceso entonces creo las tablas.
-                t_list* keys = dictionary_keys(diccionario_procesos);
-                pid_s = list_get(keys, 0);
-                pid = atoi(pid_s);
+                //t_list* keys = dictionary_keys(diccionario_procesos);
+                pid_s = string_itoa(pid);
+                //pid = atoi(pid_s);
                 t_proceso* proceso_aux = dictionary_get(diccionario_procesos, pid_s);
                 int32_t tam_proceso_aux = proceso_aux->tamanio;
                 
@@ -118,8 +121,6 @@ void handshake_kernel()
                 asignar_marcos(tabla_proceso->tabla_raiz, &tam_proceso_aux, 1, tabla_proceso->marcos, &indice_marcos, proceso_aux->lista_metricas);
 
                 list_add(lista_tablas_por_pid, tabla_proceso);
-
-                list_destroy(keys);
 
                 tam_memoria_actual = tam_memoria_actual - proceso_aux->tamanio;
 
@@ -131,10 +132,12 @@ void handshake_kernel()
                 log_info(logger, "## PID: %d - Proceso Creado - Tamaño: %d", pid, proceso_aux->tamanio);
 
                 break;
-            case CONSULTA_MEMORIA_PROCESO:
+            }
+            case CONSULTA_MEMORIA_PROCESO: {
                 recibir_consulta_memoria(cliente, paquete);
                 break;
-            case TERMINAR_PROCESO:
+            }
+            case TERMINAR_PROCESO: {
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_remove(diccionario_procesos, pid_s);
@@ -152,7 +155,8 @@ void handshake_kernel()
                 t_paquete* respuesta_exit = crear_paquete(TERMINAR_PROCESO, buffer_exit);
                 enviar_paquete(respuesta_exit, cliente);
                 break;
-            case DUMP_MEMORY_SYSCALL:
+            }
+            case DUMP_MEMORY_SYSCALL: {
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
@@ -163,20 +167,23 @@ void handshake_kernel()
                 t_paquete* respuesta_dump = crear_paquete(DUMP_MEMORY_SYSCALL, buffer_dump);
                 enviar_paquete(respuesta_dump, cliente);
                 break;
-            case SUSPENDER_PROCESO:
+            }
+            case SUSPENDER_PROCESO: {
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 suspender_proceso(tablas_proceso, proceso->lista_metricas);
                 break;
-            case DESSUSPENDER_PROCESO:
+            }
+            case DESSUSPENDER_PROCESO: {
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 dessuspender_procesos(tablas_proceso, proceso->tamanio, proceso->lista_metricas);
                 break;
+            }
             default:
                 log_error(logger, "Operación desconocida de Kernel");
                 break;
@@ -256,6 +263,7 @@ void handshake_cpu()
         {
         case FETCH:
             // CPU pide una instrucción
+            usleep(cfg_memoria->RETARDO_MEMORIA * 1000);
             proceso_terminado = enviar_instruccion(cliente, paquete);
             if (proceso_terminado)
             {
@@ -352,12 +360,12 @@ bool recibir_consulta_memoria(int32_t fd_kernel, t_paquete *paquete){
 }
 
 //Recibo las instrucciones si hubiese espacio, y las cargo --> cargar_instrucciones()
-void recibir_instrucciones(t_paquete* paquete){
+int32_t recibir_instrucciones(t_paquete* paquete){
 
     if (paquete->codigo_operacion != SAVE_INSTRUCTIONS)
     {
         log_error(logger, "Codigo de operacion incorrecto para guardar las instrucciones");
-        return;
+        return -1;
     }
 
     kernel_to_memoria *kernelToMemoria = deserializar_kernel_to_memoria(paquete->buffer);
@@ -366,13 +374,15 @@ void recibir_instrucciones(t_paquete* paquete){
     char *path_archivo = string_duplicate(cfg_memoria->PATH_INSTRUCCIONES);
     string_append(&path_archivo, kernelToMemoria->archivo);
 
-    
+    int32_t pid = kernelToMemoria->pid;
 
     cargar_instrucciones(path_archivo, kernelToMemoria);
 
     free(path_archivo);
     free(kernelToMemoria->archivo);
     free(kernelToMemoria);
+
+    return pid;
 }
 
 bool verificar_espacio_memoria(int32_t tamanio)

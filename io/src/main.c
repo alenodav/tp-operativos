@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
     char* handshake = recibir_handshake(fd_kernel);
 
     if (string_equals_ignore_case(handshake, "KERNEL")) {
-        log_info(logger, "Handshake Kernel a IO OK, esperando requests.");
+        log_debug(logger, "Handshake Kernel a IO OK, esperando requests.");
     }
     else {
         log_error(logger, "Handshake Kernel a IO error, no se pudo establecer la conexión.");
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
 
         log_info(logger, "## PID: %i - Inicio de IO - Tiempo: %i", pid, tiempo_bloqueo);
 
-        usleep(tiempo_bloqueo);
+        usleep(tiempo_bloqueo * 1000);
 
         log_info(logger, "## PID: %i - Fin de IO", pid);
 
@@ -48,8 +48,6 @@ int main(int argc, char* argv[]) {
         buffer_add_int32(buffer, pid);
         t_paquete* respuesta = crear_paquete(IO, buffer);
         enviar_paquete(respuesta, fd_kernel);
-
-        log_info(logger, "Esperando proxima request.");
     }
     
 

@@ -414,15 +414,24 @@ void terminar_proceso(int32_t pid) {
     }
     sem_wait(&mutex_execute);
     t_pcb *proceso = pcb_remove_by_pid(cola_exec, pid);
+    if (!proceso) {
+        proceso = pcb_remove_by_pid(cola_blocked, pid);
+        if (!proceso) {
+            proceso = pcb_remove_by_pid(cola_susp_blocked, pid);
+        }
+    }
+    t_cpu* cpu = cpu_find_by_id(proceso->cpu_id);
+    cpu->estado = false;
     sem_post(&mutex_execute);
     sem_post(&sem_corto_plazo);
-    t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
+    t_estado_metricas *metricas_exec = list_get(proceso->metricas, proceso->estado_actual);
     temporal_stop(metricas_exec->MT);
     t_estado estado_anterior = proceso->estado_actual;
     proceso->estado_actual = EXIT_STATUS;
     pasar_por_estado(proceso, EXIT_STATUS, estado_anterior);
     log_info(logger, "## (%d) - Finaliza el proceso", pid);
     loggear_metricas_estado(proceso);
+    free(proceso->cpu_id);
     free(proceso);
     sem_post(&sem_largo_plazo);
 
@@ -699,8 +708,18 @@ void enviar_kernel_to_io (char* id) {
 void manejar_respuesta_io(t_io *io_espera) {
     t_paquete *paquete = recibir_paquete(io_espera->socket);
     if (paquete->codigo_operacion != IO) {
-        log_error(logger, "(%d) Codigo de operacion incorrecto para IO", io_espera->proceso_ejecucion);
+        log_warning(logger, "(%d) Se desconecto IO", io_espera->proceso_ejecucion);
         terminar_proceso(io_espera->proceso_ejecucion);
+        sem_wait(&mutex_io);
+        t_io_queue *cola_io_finalizar = io_queue_find_by_id(io_espera->identificador);
+        if (!queue_is_empty(cola_io_finalizar->cola_procesos)) {
+            t_pcb* proceso = queue_pop(cola_io_finalizar->cola_procesos);
+            terminar_proceso(proceso->pid);
+        }
+        list_remove_element(io_queue_list, cola_io_finalizar);
+        queue_destroy(cola_io_finalizar->cola_procesos);
+        free(cola_io_finalizar);
+        sem_post(&mutex_io);
         sem_wait(&mutex_io);
         list_remove_element(io_list, io_espera);
         sem_post(&mutex_io);
@@ -812,6 +831,7 @@ void planificar_fifo_corto_plazo() {
 
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
         cpu_a_enviar->estado = true;
+        proceso_a_ejecutar->cpu_id = string_duplicate(cpu_a_enviar->identificador);
         
         pthread_t respuesta_cpu; 
         pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,(void*)cpu_a_enviar);
@@ -1041,6 +1061,8 @@ void planificar_sjf_corto_plazo() {
         pasar_exec(proceso_a_ejecutar);
 
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
+        cpu_a_enviar->estado = true;
+        proceso_a_ejecutar->cpu_id = string_duplicate(cpu_a_enviar->identificador);
         
         pthread_t respuesta_cpu; 
         pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,(void*)cpu_a_enviar);
@@ -1080,14 +1102,15 @@ void planificar_srt_corto_plazo() {
 
         list_sort(cola_ready, comparar_rafagas);
         t_pcb *proceso_a_ejecutar = list_remove(cola_ready, 0);
-
+        log_debug(logger, "intenta ejecutar %d", proceso_a_ejecutar->pid);
         if (cpu_a_enviar == NULL){
             t_pcb *proceso_con_mayor_rafaga = list_get_maximum(cola_exec, mayor_rafaga);
 
             proceso_a_ejecutar->rafaga_estimada = estimar_sjf(proceso_a_ejecutar);
             proceso_con_mayor_rafaga->rafaga_estimada = estimar_sjf(proceso_con_mayor_rafaga);
-
+            
             if (proceso_con_mayor_rafaga->rafaga_estimada > proceso_a_ejecutar->rafaga_estimada) {
+                log_debug(logger, "entro a interrupcion %d", proceso_a_ejecutar->pid);
                 cpu_a_enviar = cpu_find_by_id(proceso_con_mayor_rafaga->cpu_id);
                 interrumpir_proceso(proceso_con_mayor_rafaga, cpu_a_enviar);
             }
@@ -1101,6 +1124,8 @@ void planificar_srt_corto_plazo() {
         pasar_exec(proceso_a_ejecutar);
 
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
+        cpu_a_enviar->estado = true;
+        proceso_a_ejecutar->cpu_id = string_duplicate(cpu_a_enviar->identificador);
         
         pthread_t respuesta_cpu; 
         pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,(void*)cpu_a_enviar);
@@ -1123,6 +1148,7 @@ void interrumpir_proceso(t_pcb* proceso, t_cpu* cpu) {
     t_paquete *paquete = crear_paquete(INTERRUPT, buffer);
 
     enviar_paquete(paquete, cpu->socket_interrupt);
+    log_debug(logger, "se envia interrupcion a cpu %d", proceso->pid);
 
     t_paquete *respuesta = recibir_paquete(cpu->socket_interrupt);
     kernel_to_cpu *proceso_cpu = deserializar_kernel_to_cpu(respuesta->buffer);

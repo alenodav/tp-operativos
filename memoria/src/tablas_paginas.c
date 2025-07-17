@@ -58,7 +58,7 @@ void asignar_marcos(tabla_paginas* tabla_actual, int32_t* tamanio_proceso, int32
 
 int32_t devolver_marco(tabla_paginas* tabla_actual, int32_t* indices, int32_t nivel, t_metricas *metricas_proceso) {
     int32_t marco = -1;
-    usleep(cfg_memoria->RETARDO_MEMORIA);
+    usleep(cfg_memoria->RETARDO_MEMORIA * 1000);
     int indice_actual = indices[nivel-1];
     if (nivel < cfg_memoria->CANTIDAD_NIVELES) {
         marco = devolver_marco(tabla_actual->entradas[indice_actual].tabla_siguiente, indices, nivel + 1, metricas_proceso);

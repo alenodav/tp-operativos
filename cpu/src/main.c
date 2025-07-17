@@ -8,12 +8,14 @@ int main(int argc, char* argv[]){
     char* id_cpu = argv[1];
     char log_filename[64];
     sprintf(log_filename, "cpu-%s.log", id_cpu);
-    logger = log_create(log_filename, "CPU", true, LOG_LEVEL_DEBUG);
-    log_debug(logger, "Logger de CPU id:%s creado.", id_cpu);
+    
+    
     sem_init(&sem_handshake, 0, 0);
     interrupcion = false;
 
     config = crear_config("cpu");
+    logger = crear_log(config, log_filename);
+    log_debug(logger, "Logger de CPU id:%s creado.", id_cpu);
 
     // Conexion a Memoria
     pthread_t thread_memoria;
@@ -95,7 +97,7 @@ void recibir_proceso(void* _){
         destruir_paquete(paquete);
 
         pthread_t check_interrupt_thread;
-        pthread_create(&check_interrupt_thread, NULL, (void*)check_interrupt, &(paquete_proceso->pid));
+        pthread_create(&check_interrupt_thread, NULL, (void*)check_interrupt, paquete_proceso->pid);
         pthread_detach(check_interrupt_thread);
 
         // FETCH a memoria
@@ -291,14 +293,12 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
         log_info(logger, "## PID: %d - Ejecutando: %s - %s", instruccion->pid, t_instruccion_to_string(instruccion_recibida->instruccion), instruccion_recibida->parametros);
 
         if (interrupcion) {
-            interrupcion = false;
             interrumpir_proceso(pid, pc);
-            break;
         }
 
-    } while(instruccion_recibida->instruccion != EXIT && instruccion_recibida->instruccion != INIT_PROC && instruccion_recibida->instruccion != DUMP_MEMORY && instruccion_recibida->instruccion != IO_SYSCALL);
+    } while(instruccion_recibida->instruccion != EXIT && instruccion_recibida->instruccion != INIT_PROC && instruccion_recibida->instruccion != DUMP_MEMORY && instruccion_recibida->instruccion != IO_SYSCALL && !interrupcion);
     
-    
+    interrupcion = false;
     free(instruccion_recibida->parametros);
     destruir_paquete(siguiente_instruccion);
 }

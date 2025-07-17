@@ -30,7 +30,7 @@ int32_t crear_socket_cliente(char *ip, char* port) {
         log_error(logger, "Error al crear la conexion: %s", strerror(errno));
         abort();
     } 
-    log_info(logger, "Conexion creada con exito.");
+    log_debug(logger, "Conexion creada con exito.");
     freeaddrinfo(server_info);
 	return fd_conexion;
 }
@@ -87,7 +87,7 @@ int32_t esperar_cliente(int32_t socket_servidor)
         if(socket_cliente == -1) {
             log_warning(logger, "Error al aceptar a un cliente: %s", strerror(errno));
         }
-        log_info(logger, "Se conecto un cliente.");
+        log_debug(logger, "Se conecto un cliente.");
 
         return socket_cliente;
 }
