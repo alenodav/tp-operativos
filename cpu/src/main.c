@@ -143,6 +143,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             escribir->datos = parametros[1];
             escribir->datos_length = string_length(parametros[1]); 
             escribir->direccion = atoi(parametros[0]);
+            escribir->pid = pid;
 
             if(cant_entradas_cache != 0) {
                 escribir_en_cache(escribir->direccion, escribir->datos_length, pid, (void*)escribir->datos);
@@ -160,16 +161,9 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             t_paquete* paquete = crear_paquete(WRITE_MEMORIA, buffer);
             enviar_paquete(paquete, fd_memoria);
 
-            // t_paquete* respuesta = recibir_paquete(fd_memoria);
-            // int32_t length_respuesta = buffer_read_int32(respuesta->buffer);
-            // char* mensaje = buffer_read_string(respuesta->buffer,&length_respuesta);
+            t_paquete* respuesta = recibir_paquete(fd_memoria);
             
-            // if(string_equals_ignore_case(mensaje, "OK")) {
-            //     log_debug(logger, "PID: %d - WRITE completado exitosamente", pid);
-            // } else {
-            //     log_error(logger, "PID: %d - Error en WRITE: %s", pid, mensaje);
-            // }
-
+            destruir_paquete(respuesta);
             log_info(logger, "PID: %d - Acción: ESCRIBIR - Dirección Física: %d - Valor: %s", pid, direccion_fisica, escribir->datos);
             
             // free(mensaje);
@@ -247,6 +241,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 
             t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_dispatch);
+            
 
             destruir_t_syscall(syscall);
             break;
@@ -309,10 +304,11 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 }
 
 t_buffer *serializar_cpu_write(cpu_write *data) {
-    t_buffer *buffer = buffer_create(sizeof(int32_t) * 2 + data->datos_length);
+    t_buffer *buffer = buffer_create(sizeof(int32_t) * 3 + data->datos_length);
     buffer_add_int32(buffer, data->direccion);
     buffer_add_int32(buffer, data->datos_length);
     buffer_add_string(buffer, data->datos_length, data->datos);
+    buffer_add_int32(buffer, data->pid);
     return buffer;
 }
 

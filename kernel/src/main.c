@@ -228,6 +228,7 @@ void planificar_fifo_largo_plazo() {
         if (list_is_empty(archivos_instruccion)) {
             log_debug(logger, "No hay archivo de instruccion.");
             sem_wait(&sem_largo_plazo);
+            continue;
         }
         pcb = crear_proceso();
         consulta_memoria = consultar_a_memoria();
@@ -258,7 +259,8 @@ t_estado_metricas *crear_metrica_estado(t_estado estado) {
     t_estado_metricas *metrica_agregar = malloc(sizeof(t_estado_metricas));
     metrica_agregar->estado = estado;
     metrica_agregar->ME = 0;
-    metrica_agregar->MT = NULL;
+    metrica_agregar->MT = temporal_create();
+    temporal_stop(metrica_agregar->MT);
     return metrica_agregar;
 }
 
@@ -413,6 +415,7 @@ void terminar_proceso(int32_t pid) {
     sem_wait(&mutex_execute);
     t_pcb *proceso = pcb_remove_by_pid(cola_exec, pid);
     sem_post(&mutex_execute);
+    sem_post(&sem_corto_plazo);
     t_estado_metricas *metricas_exec = list_get(proceso->metricas, EXEC);
     temporal_stop(metricas_exec->MT);
     t_estado estado_anterior = proceso->estado_actual;
@@ -443,7 +446,7 @@ t_pcb* pcb_get_by_pid(t_list* pcb_list, int32_t pid) {
 }
 
 void loggear_metricas_estado(t_pcb* proceso) {
-    char* metricas_estado = "";
+    char* metricas_estado = string_new();
     t_list_iterator *metricas_iterator = list_iterator_create(proceso->metricas);
     while(list_iterator_has_next(metricas_iterator)){
         t_estado_metricas* metrica = list_iterator_next(metricas_iterator);
@@ -670,6 +673,7 @@ void pasar_blocked(t_pcb* proceso, char* id_io) {
     sem_wait(&mutex_blocked);
     list_add(cola_blocked, proceso);
     sem_post(&mutex_blocked);
+    sem_post(&sem_corto_plazo);
 }
 
 void enviar_kernel_to_io (char* id) {
@@ -807,6 +811,7 @@ void planificar_fifo_corto_plazo() {
         pasar_exec(proceso_a_ejecutar);
 
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
+        cpu_a_enviar->estado = true;
         
         pthread_t respuesta_cpu; 
         pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,(void*)cpu_a_enviar);
@@ -868,6 +873,7 @@ void atender_respuesta_cpu(t_cpu *cpu) {
             free(parametros);
             break;
         case IO_SYSCALL:
+            cpu->estado = false;
             parametros = string_split(syscall_recibida->parametros, " ");
             char* dispositivo = string_duplicate(parametros[0]);
             int32_t tiempo = atoi(parametros[1]);
@@ -876,9 +882,11 @@ void atender_respuesta_cpu(t_cpu *cpu) {
             free(parametros);
             break;
         case DUMP_MEMORY:
+            cpu->estado = false;
             ejecutar_dump_memory(syscall_recibida->pid);
             break; 
         case EXIT:
+            cpu->estado = false;
             terminar_proceso(syscall_recibida->pid);
         default:
             break;
@@ -936,6 +944,11 @@ void ejecutar_init_proc(int32_t pid, char* nombre_archivo, int32_t tamanio_proce
     
     t_pcb *pcb = pcb_get_by_pid(cola_exec, pid);
     enviar_kernel_to_cpu(cpu->socket_dispatch, pcb);
+
+    pthread_t respuesta_cpu; 
+    pthread_create(&respuesta_cpu,NULL,(void*)atender_respuesta_cpu,(void*)cpu);
+    pthread_detach(respuesta_cpu);
+
     sem_post(&sem_largo_plazo);
 }
 

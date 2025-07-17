@@ -146,6 +146,11 @@ void handshake_kernel()
                 tam_memoria_actual = tam_memoria_actual + proceso->tamanio;
                 free(proceso->lista_metricas);
                 free(proceso);
+
+                t_buffer* buffer_exit = buffer_create(sizeof(bool));
+                buffer_add_bool(buffer_exit, true);
+                t_paquete* respuesta_exit = crear_paquete(TERMINAR_PROCESO, buffer_exit);
+                enviar_paquete(respuesta_exit, cliente);
                 break;
             case DUMP_MEMORY_SYSCALL:
                 pid = buffer_read_int32(paquete->buffer);
@@ -257,7 +262,7 @@ void handshake_cpu()
                 log_debug(logger, "Proceso terminado - instrucción EXIT enviada");
             }
             break;
-        case READ_MEMORIA:
+        case READ_MEMORIA:{
             cpu_read *parametros = deserializar_cpu_read(paquete->buffer);
             char* retorno = (char*)leer_de_memoria(parametros->direccion, parametros->tamanio, parametros->pid);
             t_buffer *buffer_resp = buffer_create(sizeof(int32_t) + parametros->tamanio + 1);
@@ -266,11 +271,20 @@ void handshake_cpu()
             t_paquete *paquete_read = crear_paquete(READ_MEMORIA, buffer_resp);
             enviar_paquete(paquete_read, cliente);
             break;
-        case WRITE_MEMORIA:
+        }
+        case WRITE_MEMORIA:{
             cpu_write *parametros_write = deserializar_cpu_write(paquete->buffer);
             escribir_en_memoria(parametros_write->direccion, parametros_write->datos_length, parametros_write->datos, parametros_write->pid);
+
+            t_buffer* buffer_write = buffer_create(sizeof(bool));
+            buffer_add_bool(buffer_write, true);
+            t_paquete* respuesta_write = crear_paquete(WRITE_MEMORIA, buffer_write);
+            enviar_paquete(respuesta_write, cliente);
+            free(parametros_write->datos);
+            free(parametros_write);
             break;
-        case CONSULTA_MARCO:
+        }
+        case CONSULTA_MARCO:{
             pid = buffer_read_int32(paquete->buffer);
             int32_t* indices = calloc(cfg_memoria->CANTIDAD_NIVELES, sizeof(int32_t));
             for(int i = 0; i < cfg_memoria->CANTIDAD_NIVELES; i++) {
@@ -286,7 +300,8 @@ void handshake_cpu()
             enviar_paquete(respuesta_marco, cliente);
             free(indices);
             break;
-        case LEER_PAGINA_COMPLETA:
+        }
+        case LEER_PAGINA_COMPLETA:{
             pid = buffer_read_int32(paquete->buffer);
             direccion = buffer_read_int32(paquete->buffer);
             pid_s = string_itoa(pid);
@@ -297,7 +312,8 @@ void handshake_cpu()
             t_paquete* respuesta = crear_paquete(LEER_PAGINA_COMPLETA, buffer_leer);
             enviar_paquete(respuesta, cliente);
             break;
-        case ACTUALIZAR_PAGINA_COMPLETA:
+        }
+        case ACTUALIZAR_PAGINA_COMPLETA:{
             pid = buffer_read_int32(paquete->buffer);
             direccion = buffer_read_int32(paquete->buffer);
             void *contenido = malloc(cfg_memoria->TAM_PAGINA);
@@ -306,6 +322,7 @@ void handshake_cpu()
             proceso = dictionary_get(diccionario_procesos, pid_s);
             actualizar_pagina_completa(direccion, contenido, pid, proceso->lista_metricas);
             break;
+        }
         default:
             log_error(logger, "Operación desconocida de CPU");
             break;
@@ -478,10 +495,21 @@ void cargar_instrucciones(char *path_archivo, kernel_to_memoria* proceso_recibid
     proceso->tamanio = proceso_recibido->tamanio;
     proceso->lista_instrucciones = lista_instrucciones;
     proceso->lista_metricas = malloc(sizeof(t_metricas));
+    proceso->lista_metricas->pid = proceso_recibido->pid;
+    inicializar_metricas(proceso->lista_metricas);
 
     char *pid_str = string_itoa(proceso_recibido->pid);
     dictionary_put(diccionario_procesos, pid_str, proceso);
     free(pid_str);
+}
+
+void inicializar_metricas(t_metricas* metricas) {
+    metricas->accesos_tablas_paginas = 0;
+    metricas->bajadas_a_swap = 0;
+    metricas->cantidad_escrituras = 0;
+    metricas->cantidad_lecturas = 0;
+    metricas->instrucciones_solicitadas = 0;
+    metricas->subidas_a_mp = 0;
 }
 
 //Envia la instruccion a CPU y al final verifica si fue EXIT o no.
@@ -577,6 +605,7 @@ cpu_write *deserializar_cpu_write(t_buffer *data) {
     ret->direccion = buffer_read_int32(data);
     ret->datos_length = buffer_read_int32(data);
     ret->datos = buffer_read_string(data, &ret->datos_length);
+    ret->pid = buffer_read_int32(data);
     return ret;
 }
 

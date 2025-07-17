@@ -97,6 +97,7 @@ tablas_por_pid* tablas_por_pid_get_by_pid(t_list* tablas_por_pid_list, int32_t p
 t_buffer* serializar_config_to_cpu(t_config_to_cpu* cfg_to_cpu);
 void enviar_config_to_cpu(t_config_to_cpu* cfg_to_cpu, int32_t socket);
 char *t_instruccion_to_string(t_instruccion instruccion);
+void inicializar_metricas(t_metricas* metricas);
 
 void* leer_pagina_completa(int32_t direccion_fisica, int32_t pid, t_metricas *metricas_proceso);
 bool actualizar_pagina_completa(int32_t direccion_fisica, void* pagina, int32_t pid, t_metricas *metricas_proceso);

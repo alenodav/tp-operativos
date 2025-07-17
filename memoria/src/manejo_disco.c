@@ -109,7 +109,7 @@ bool tiene_entradas_swap(tablas_por_pid* proceso) {
 }
 
 void liberar_proceso_swap(tablas_por_pid* contenido, int32_t tamanio_proceso, t_metricas *metricas_proceso) {
-    char* swapfile_tmp_path = cfg_memoria->PATH_SWAPFILE;
+    char* swapfile_tmp_path = string_duplicate(cfg_memoria->PATH_SWAPFILE);
     string_append(&swapfile_tmp_path, ".tmp");
     FILE* swapfile_tmp = txt_open_for_append(swapfile_tmp_path);
     FILE* swapfile = fopen(cfg_memoria->PATH_SWAPFILE, "r");
