@@ -2,7 +2,7 @@
 
 void dump_memory(tablas_por_pid* contenido, t_metricas* metricas_proceso) {
     log_info(logger, "## PID: %d - Memory Dump solicitado", contenido->pid);
-    char* contenido_dump = "";
+    char* contenido_dump = string_new();
     for(int i = 0; i < contenido->cant_marcos; i++) {
         void* contenido_marco = leer_pagina_completa(contenido->marcos[i] * cfg_memoria->TAM_PAGINA, contenido->pid, metricas_proceso);
         string_append(&contenido_dump, (char*)contenido_marco);
@@ -19,7 +19,7 @@ void dump_memory(tablas_por_pid* contenido, t_metricas* metricas_proceso) {
 }
 
 void suspender_proceso(tablas_por_pid* contenido, t_metricas *metricas_proceso) {
-    char* contenido_a_swap = "";
+    char* contenido_a_swap = string_new();
     for(int i = 0; i < contenido->cant_marcos; i++) {
         void* contenido_marco = leer_pagina_completa(contenido->marcos[i] * cfg_memoria->TAM_PAGINA, contenido->pid, metricas_proceso);
         string_append(&contenido_a_swap, (char*)contenido_marco);

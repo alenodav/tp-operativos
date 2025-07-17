@@ -855,6 +855,8 @@ void atender_respuesta_cpu(t_cpu *cpu) {
     destruir_paquete(paquete);
     log_info(logger, "## (%d) - Solicito syscall: (%s)",syscall_recibida->pid, t_instruccion_to_string(syscall_recibida->syscall));
     char** parametros = NULL;
+    t_pcb *pcb = pcb_get_by_pid(cola_exec, syscall_recibida->pid);
+    pcb->pc = syscall_recibida->pc;
     switch (syscall_recibida->syscall){
         case INIT_PROC:
             parametros = string_split(syscall_recibida->parametros, " ");
@@ -920,6 +922,7 @@ t_syscall *deserializar_t_syscall(t_buffer* buffer) {
     ret->parametros_length = buffer_read_int32(buffer);
     ret->parametros = buffer_read_string(buffer, &ret->parametros_length);
     ret->pid = buffer_read_int32(buffer);
+    ret->pc = buffer_read_int32(buffer);
     return ret;
 }
 
@@ -973,7 +976,7 @@ void ejecutar_dump_memory(int32_t pid) {
 
 void verificar_tiempo_suspension(t_pcb *proceso) {
     uint64_t tiempo_suspension = config_get_long_value(config, "TIEMPO_SUSPENSION");
-    usleep(tiempo_suspension);
+    usleep(tiempo_suspension * 1000);
     if (proceso->estado_actual == BLOCKED) {
         suspender_proceso(proceso);
     }

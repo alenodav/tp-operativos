@@ -18,7 +18,8 @@ int main(int argc, char *argv[])
     log_debug(logger, "Config y Logger creados correctamente.");
     //Leo el archivo de configuracion y la guardo en una variable global.
     leer_configuracion(config);
-    memoria_principal = calloc(cfg_memoria->TAM_MEMORIA, 1);
+    memoria_principal = malloc(sizeof(t_memoria));
+    memoria_principal->datos = malloc(cfg_memoria->TAM_MEMORIA);
     inicializar_bitmap(cfg_memoria->TAM_MEMORIA / cfg_memoria->TAM_PAGINA);
 
     // Inicializo diccionario de procesos y su mutex
@@ -152,6 +153,10 @@ void handshake_kernel()
                 proceso = dictionary_get(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 dump_memory(tablas_proceso, proceso->lista_metricas);
+                t_buffer* buffer_dump = buffer_create(sizeof(bool));
+                buffer_add_bool(buffer_dump, true);
+                t_paquete* respuesta_dump = crear_paquete(DUMP_MEMORY_SYSCALL, buffer_dump);
+                enviar_paquete(respuesta_dump, cliente);
                 break;
             case SUSPENDER_PROCESO:
                 pid = buffer_read_int32(paquete->buffer);
@@ -280,6 +285,7 @@ void handshake_cpu()
             t_paquete* respuesta_marco = crear_paquete(CONSULTA_MARCO, buffer_marco);
             enviar_paquete(respuesta_marco, cliente);
             free(indices);
+            break;
         case LEER_PAGINA_COMPLETA:
             pid = buffer_read_int32(paquete->buffer);
             direccion = buffer_read_int32(paquete->buffer);
@@ -402,11 +408,15 @@ struct_memoria_to_cpu *parsear_linea(char *linea){
     }
     else if (string_equals_ignore_case(token[0], "IO"))
     {
-        struct_memoria_to_cpu->instruccion = IO;
+        struct_memoria_to_cpu->instruccion = IO_SYSCALL;
     }
     else if (string_equals_ignore_case(token[0], "INIT_PROC"))
     {
         struct_memoria_to_cpu->instruccion = INIT_PROC;
+    }
+    else if (string_equals_ignore_case(token[0], "DUMP_MEMORY"))
+    {
+        struct_memoria_to_cpu->instruccion = DUMP_MEMORY;
     }
     else
     {
@@ -492,7 +502,7 @@ bool enviar_instruccion(int32_t fd_cpu, t_paquete* paquete){
     }
 
     struct_memoria_to_cpu *instruccion = list_get(proceso->lista_instrucciones, pc);
-    int32_t tam_para = instruccion->parametros_length;
+    int32_t tam_para = string_length(instruccion->parametros) + 1;
     t_buffer* buffer = buffer_create(sizeof(uint8_t) + sizeof(int32_t) + tam_para);
     buffer_add_uint8(buffer, instruccion->instruccion);
     buffer_add_int32(buffer, tam_para);

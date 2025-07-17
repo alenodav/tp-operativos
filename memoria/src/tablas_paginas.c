@@ -25,7 +25,7 @@ tablas_por_pid* crear_tabla_raiz(int32_t pid, int32_t tamanio_proceso) {
     tablas_por_pid* tabla_raiz_pid = malloc(sizeof(tablas_por_pid));
     tabla_raiz_pid->pid = pid;
     tabla_raiz_pid->tabla_raiz = crear_tabla(1);
-    tabla_raiz_pid->cant_marcos = ceil(tamanio_proceso / cfg_memoria->TAM_PAGINA);
+    tabla_raiz_pid->cant_marcos = ceil((double)tamanio_proceso / (double)cfg_memoria->TAM_PAGINA);
     tabla_raiz_pid->marcos = malloc(tabla_raiz_pid->cant_marcos * sizeof(int));
     return tabla_raiz_pid;
 }

@@ -40,7 +40,9 @@ int32_t numero_pagina(int32_t direccion_logica){
 }
 
 int32_t entrada_nivel_X(int32_t numero_pagina, int32_t nivel){
-    return ((int32_t)(floor(numero_pagina / cant_entradas_tabla ^ (cant_niveles-nivel))) % cant_entradas_tabla);
+    int32_t potencia = pow(cant_entradas_tabla, cant_niveles-nivel);
+    int32_t resultado = (int32_t)floor(numero_pagina / potencia) % cant_entradas_tabla;
+    return resultado;
 }
 
 int32_t desplazamiento(int32_t direccion_logica){
