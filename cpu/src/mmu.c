@@ -195,12 +195,12 @@ int32_t correr_algoritmo_cache(int32_t pid) {
     int32_t indice = -1;
     t_list* lista_despues_del_ptr = list_slice(cache_de_paginas, ptr_clock, cant_entradas_cache - ptr_clock);
     t_list* lista_antes_del_ptr = list_take(cache_de_paginas, ptr_clock);
-    t_list_iterator* iterator_despues = list_iterator_create(lista_despues_del_ptr);
-    t_list_iterator* iterator_antes = list_iterator_create(lista_antes_del_ptr);
     entrada_cache* entrada_a_reemplazar = NULL;
     bool encontrado = false;
     if (string_equals_ignore_case(algoritmo_cache, "CLOCK")) {
         for(int i = 0; i < 2; i++) {
+            t_list_iterator* iterator_despues = list_iterator_create(lista_despues_del_ptr);
+            t_list_iterator* iterator_antes = list_iterator_create(lista_antes_del_ptr);
             if(encontrado) {
                 break;
             }
@@ -215,6 +215,9 @@ int32_t correr_algoritmo_cache(int32_t pid) {
                     entrada_a_reemplazar->uso = false;
                 }
             }
+             if(encontrado){
+                break;
+            }
             while(list_iterator_has_next(iterator_antes)) {
                 entrada_a_reemplazar = list_iterator_next(iterator_antes);
                 if(!entrada_a_reemplazar->uso) {
@@ -226,10 +229,14 @@ int32_t correr_algoritmo_cache(int32_t pid) {
                     entrada_a_reemplazar->uso = false;
                 }
             }
+            list_iterator_destroy(iterator_despues);
+            list_iterator_destroy(iterator_antes);
         }
     }
     else {
         for(int i = 0; i < 4; i++) {
+            t_list_iterator* iterator_despues = list_iterator_create(lista_despues_del_ptr);
+            t_list_iterator* iterator_antes = list_iterator_create(lista_antes_del_ptr);
             if(encontrado) {
                 break;
             }
@@ -251,6 +258,10 @@ int32_t correr_algoritmo_cache(int32_t pid) {
                     }
                 }
             }
+            if(encontrado){
+                break;
+            }
+                
             while(list_iterator_has_next(iterator_antes)) {
                 entrada_a_reemplazar = list_iterator_next(iterator_antes);
                 if(!entrada_a_reemplazar->uso && !entrada_a_reemplazar->modificado) {
@@ -258,7 +269,7 @@ int32_t correr_algoritmo_cache(int32_t pid) {
                     indice = list_iterator_index(iterator_antes);
                     break;
                 }
-                else if (i % 2 == 0){
+                else if (i % 2 != 0){
                     if (!entrada_a_reemplazar->uso) {
                         encontrado = true;
                         indice = list_iterator_index(iterator_antes);
@@ -269,10 +280,14 @@ int32_t correr_algoritmo_cache(int32_t pid) {
                     }
                 }
             }
+
+            list_iterator_destroy(iterator_despues);
+            list_iterator_destroy(iterator_antes);
         }
+
+         
     }
-    list_iterator_destroy(iterator_despues);
-    list_iterator_destroy(iterator_antes);
+   
     list_destroy(lista_despues_del_ptr);
     list_destroy(lista_antes_del_ptr);
 
