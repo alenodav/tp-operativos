@@ -13,8 +13,17 @@ int main(int argc, char* argv[]){
     interrupcion = false;
 
     config = crear_config("cpu");
+    
+    inicializar_tlb();
+    inicializar_cache();
+
     logger = crear_log(config, log_filename);
     log_debug(logger, "Logger de CPU id:%s creado.", id_cpu);
+
+    cant_entradas_cache = config_get_int_value(config, "ENTRADAS_CACHE");
+    cant_entradas_tlb = config_get_int_value(config, "ENTRADAS_TLB");
+    algoritmo_cache = config_get_string_value(config, "REEMPLAZO_CACHE");
+    retardo_cache = config_get_int_value(config, "RETARDO_CACHE");
 
     // Conexion a Memoria
     pthread_t thread_memoria;
