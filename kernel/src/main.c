@@ -216,7 +216,7 @@ void planificar_fifo_largo_plazo() {
         bool consulta_memoria = false;
         if (!list_is_empty(cola_susp_ready)) {
             sem_wait(&mutex_susp_ready);
-            pcb = list_remove(cola_susp_ready, 0);
+            pcb = list_get(cola_susp_ready, 0);
             sem_post(&mutex_susp_ready);
             consulta_memoria = consultar_a_memoria_by_pcb(pcb);
             if (consulta_memoria) {
@@ -256,6 +256,7 @@ void planificar_fifo_largo_plazo() {
 
 void dessuspender_proceso(t_pcb* pcb) {
     log_debug(logger, "INICIO - enviar_instrucciones - pid:%d", pcb->pid);
+    list_remove_element(cola_susp_ready, pcb);
     int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
     t_buffer *buffer = buffer_create(sizeof(int32_t));
     buffer_add_int32(buffer, pcb->pid);
@@ -333,7 +334,7 @@ bool consultar_a_memoria() {
     enviar_paquete(paquete, fd_conexion_memoria);
     t_paquete *retorno = recibir_paquete(fd_conexion_memoria);
     if (retorno->codigo_operacion == CONSULTA_MEMORIA_PROCESO) {
-        ret = buffer_read_bool(paquete->buffer);
+        ret = buffer_read_bool(retorno->buffer);
     }
     else {
         log_error(logger, "## (%d) Codigo de operación incorrecto para consultar a memoria.", pid);
@@ -356,7 +357,7 @@ bool consultar_a_memoria_by_pcb(t_pcb *pcb) {
     enviar_paquete(paquete, fd_conexion_memoria);
     t_paquete *retorno = recibir_paquete(fd_conexion_memoria);
     if (retorno->codigo_operacion == CONSULTA_MEMORIA_PROCESO) {
-        ret = buffer_read_bool(paquete->buffer);
+        ret = buffer_read_bool(retorno->buffer);
     }
     else {
         log_error(logger, "## (%d) Codigo de operación incorrecto para consultar a memoria.", pid);
@@ -530,7 +531,7 @@ void planificar_pmcp_largo_plazo() {
         if (!list_is_empty(cola_susp_ready)) {
             sem_wait(&mutex_susp_ready);
             list_sort(cola_susp_ready, es_mas_chico_que);
-            pcb = list_remove(cola_susp_ready, 0);
+            pcb = list_get(cola_susp_ready, 0);
             sem_post(&mutex_susp_ready);
             consulta_memoria = consultar_a_memoria_by_pcb(pcb);
             if (consulta_memoria) {
@@ -546,21 +547,26 @@ void planificar_pmcp_largo_plazo() {
             pcb = crear_proceso();
         }
         else {
-            log_debug(logger, "No hay archivo de instruccion.");
-            sem_wait(&sem_archivos_instruccion);
-            continue;
+            // log_debug(logger, "No hay archivo de instruccion.");
+            // sem_wait(&sem_archivos_instruccion);
+            // continue;
         }
         // Ordeno por mas chico, dejando en la posicion 0 al mas chico.
-        list_sort(cola_new, es_mas_chico_que);
-        consulta_memoria = consultar_a_memoria();
-        if (consulta_memoria) {
-            pcb = list_remove(cola_new, 0);
-            enviar_instrucciones(pcb);
-            pasar_ready(pcb, list_get(pcb->metricas, NEW));
+        if(!list_is_empty(cola_new)) {
+            list_sort(cola_new, es_mas_chico_que);
+            consulta_memoria = consultar_a_memoria();
+            if (consulta_memoria) {
+                pcb = list_remove(cola_new, 0);
+                enviar_instrucciones(pcb);
+                pasar_ready(pcb, list_get(pcb->metricas, NEW));
+            }
+            else {
+                log_debug(logger, "## () No hay espacio suficiente para inicializar el proceso");
+                sem_wait(&sem_espacio);
+            }
         }
         else {
-            log_debug(logger, "## (%d) No hay espacio suficiente para inicializar el proceso", pcb->pid);
-            sem_wait(&sem_espacio);
+            sem_wait(&sem_largo_plazo);
         }
     }
 }
@@ -796,7 +802,6 @@ void pasar_susp_ready(t_pcb *pcb, t_estado_metricas* metricas) {
     sem_wait(&mutex_susp_ready);
     list_add(cola_susp_ready, pcb);
     sem_post(&mutex_susp_ready);
-    sem_post(&sem_espacio);
     sem_post(&sem_largo_plazo);
 }
 
@@ -1003,6 +1008,7 @@ void ejecutar_init_proc(int32_t pid, char* nombre_archivo, int32_t tamanio_proce
     //t_pcb *pcb = pcb_get_by_pid(cola_exec, pid);
     //enviar_kernel_to_cpu(cpu->socket_dispatch, pcb);
     t_buffer* buffer = buffer_create(sizeof(bool));
+    buffer_add_bool(buffer, true);
     t_paquete* respuesta = crear_paquete(SYSCALL, buffer);
     enviar_paquete(respuesta, cpu->socket_dispatch);
 
@@ -1011,7 +1017,6 @@ void ejecutar_init_proc(int32_t pid, char* nombre_archivo, int32_t tamanio_proce
     pthread_detach(respuesta_cpu);
 
     sem_post(&sem_archivos_instruccion);
-    sem_post(&sem_espacio);
     sem_post(&sem_largo_plazo);
 }
 
@@ -1020,11 +1025,7 @@ void ejecutar_dump_memory(int32_t pid) {
     sem_wait(&mutex_execute);
     t_pcb* proceso = pcb_remove_by_pid(cola_exec, pid);
     sem_post(&mutex_execute);
-
-    pthread_t verificar_suspension; 
-    pthread_create(&verificar_suspension,NULL,(void*)verificar_tiempo_suspension,(void*)proceso);
-    pthread_detach(verificar_suspension);  
-
+    
     pasar_blocked(proceso, "DUMP_MEMORY");
 
     int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));

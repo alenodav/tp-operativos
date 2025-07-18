@@ -20,6 +20,7 @@ int main(int argc, char *argv[])
     leer_configuracion(config);
     memoria_principal = malloc(sizeof(t_memoria));
     memoria_principal->datos = calloc(cfg_memoria->TAM_MEMORIA,1);
+    memoria_principal->datos = string_repeat(' ', cfg_memoria->TAM_MEMORIA);
     inicializar_bitmap(cfg_memoria->TAM_MEMORIA / cfg_memoria->TAM_PAGINA);
 
     // Inicializo diccionario de procesos y su mutex
@@ -169,6 +170,7 @@ void handshake_kernel()
                 break;
             }
             case SUSPENDER_PROCESO: {
+                usleep(cfg_memoria->RETARDO_SWAP*1000);
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
@@ -178,6 +180,7 @@ void handshake_kernel()
                 break;
             }
             case DESSUSPENDER_PROCESO: {
+                usleep(cfg_memoria->RETARDO_SWAP*1000);
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
@@ -412,40 +415,40 @@ kernel_to_memoria *deserializar_kernel_to_memoria(t_buffer *buffer)
 //Parsea linea por linea el archivo.
 struct_memoria_to_cpu *parsear_linea(char *linea){
     char **token = string_split(linea, " ");
-    struct_memoria_to_cpu *struct_memoria_to_cpu = malloc(sizeof(struct_memoria_to_cpu));
-    struct_memoria_to_cpu->parametros = NULL;
+    struct_memoria_to_cpu *struct_memoria_to_cpu1 = malloc(sizeof(struct_memoria_to_cpu));
+    struct_memoria_to_cpu1->parametros = string_new();
 
     if (string_equals_ignore_case(token[0], "READ"))
     {
-        struct_memoria_to_cpu->instruccion = READ;
+        struct_memoria_to_cpu1->instruccion = READ;
     }
     else if (string_equals_ignore_case(token[0], "WRITE"))
     {
-        struct_memoria_to_cpu->instruccion = WRITE;
+        struct_memoria_to_cpu1->instruccion = WRITE;
     }
     else if (string_equals_ignore_case(token[0], "GOTO"))
     {
-        struct_memoria_to_cpu->instruccion = GOTO;
+        struct_memoria_to_cpu1->instruccion = GOTO;
     }
     else if (string_equals_ignore_case(token[0], "NOOP"))
     {
-        struct_memoria_to_cpu->instruccion = NOOP;
+        struct_memoria_to_cpu1->instruccion = NOOP;
     }
     else if (string_equals_ignore_case(token[0], "EXIT"))
     {
-        struct_memoria_to_cpu->instruccion = EXIT;
+        struct_memoria_to_cpu1->instruccion = EXIT;
     }
     else if (string_equals_ignore_case(token[0], "IO"))
     {
-        struct_memoria_to_cpu->instruccion = IO_SYSCALL;
+        struct_memoria_to_cpu1->instruccion = IO_SYSCALL;
     }
     else if (string_equals_ignore_case(token[0], "INIT_PROC"))
     {
-        struct_memoria_to_cpu->instruccion = INIT_PROC;
+        struct_memoria_to_cpu1->instruccion = INIT_PROC;
     }
     else if (string_equals_ignore_case(token[0], "DUMP_MEMORY"))
     {
-        struct_memoria_to_cpu->instruccion = DUMP_MEMORY;
+        struct_memoria_to_cpu1->instruccion = DUMP_MEMORY;
     }
     else
     {
@@ -454,21 +457,21 @@ struct_memoria_to_cpu *parsear_linea(char *linea){
 
     if (token[1] != NULL)
     {
-        struct_memoria_to_cpu->parametros = string_new();
+        struct_memoria_to_cpu1->parametros = string_new();
         for (int i = 1; token[i] != NULL; i++)
         {
-            string_append_with_format(&struct_memoria_to_cpu->parametros, "%s%s", token[i], token[i + 1] ? " " : "");
+            string_append_with_format(&struct_memoria_to_cpu1->parametros, "%s%s", token[i], token[i + 1] ? " " : "");
         }
     }
     else
     {
-        struct_memoria_to_cpu->parametros = string_duplicate("");
+        struct_memoria_to_cpu1->parametros = string_duplicate("");
     }
 
     string_iterate_lines(token, (void*)free);
     free(token);
 
-    return struct_memoria_to_cpu;
+    return struct_memoria_to_cpu1;
 }
 
 //Carga la instrucciones usando --> parsear_linea para "parsear" cada linea y poder guardarla en una lista.
@@ -597,7 +600,7 @@ void leer_configuracion(t_config* config){
     cfg_memoria->CANTIDAD_NIVELES = config_get_int_value(config, "CANTIDAD_NIVELES");    
     cfg_memoria->RETARDO_MEMORIA = config_get_int_value(config, "RETARDO_MEMORIA");
     cfg_memoria->PATH_SWAPFILE = config_get_string_value(config, "PATH_SWAPFILE");
-    cfg_memoria->RETARDO_SWAP = config_get_string_value(config, "RETARDO_SWAP");
+    cfg_memoria->RETARDO_SWAP = config_get_int_value(config, "RETARDO_SWAP");
     cfg_memoria->LOG_LEVEL = config_get_string_value(config, "LOG_LEVEL");
     cfg_memoria->DUMP_PATH = config_get_string_value(config, "DUMP_PATH");
     cfg_memoria->PATH_INSTRUCCIONES = config_get_string_value(config, "PATH_INSTRUCCIONES"); 

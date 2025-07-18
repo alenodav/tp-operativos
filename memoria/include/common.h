@@ -31,7 +31,7 @@ typedef struct{
 } t_proceso;
 
 typedef struct t_memoria{
-    void* datos;
+    char* datos;
 } t_memoria;
 
 extern t_memoria* memoria_principal;
@@ -44,7 +44,7 @@ typedef struct{
     int CANTIDAD_NIVELES;
     int RETARDO_MEMORIA;
     char* PATH_SWAPFILE;
-    char* RETARDO_SWAP;
+    int RETARDO_SWAP;
     char* LOG_LEVEL;
     char* DUMP_PATH;
     char* PATH_INSTRUCCIONES;

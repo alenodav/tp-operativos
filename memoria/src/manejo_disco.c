@@ -21,9 +21,10 @@ void dump_memory(tablas_por_pid* contenido, t_metricas* metricas_proceso) {
 void suspender_proceso(tablas_por_pid* contenido, t_metricas *metricas_proceso) {
     char* contenido_a_swap = string_new();
     for(int i = 0; i < contenido->cant_marcos; i++) {
-        void* contenido_marco = leer_pagina_completa(contenido->marcos[i] * cfg_memoria->TAM_PAGINA, contenido->pid, metricas_proceso);
+        char* contenido_marco = leer_pagina_completa(contenido->marcos[i] * cfg_memoria->TAM_PAGINA, contenido->pid, metricas_proceso);
         string_append(&contenido_a_swap, (char*)contenido_marco);
-        void* pagina_vacia = calloc(cfg_memoria->TAM_PAGINA, sizeof(void*));
+        char* pagina_vacia = calloc(cfg_memoria->TAM_PAGINA, 1);
+        pagina_vacia = string_repeat(' ',cfg_memoria->TAM_PAGINA);
         actualizar_pagina_completa(contenido->marcos[i] * cfg_memoria->TAM_PAGINA, pagina_vacia, contenido->pid, metricas_proceso);
         liberar_marco(contenido->marcos[i]);
         free(pagina_vacia);
@@ -51,7 +52,7 @@ void dessuspender_procesos (tablas_por_pid* contenido, int32_t tamanio_proceso, 
     FILE* swapfile_tmp = txt_open_for_append(swapfile_tmp_path);
     FILE* swapfile = fopen(cfg_memoria->PATH_SWAPFILE, "r");
     char* pid_s = string_itoa(contenido->pid);
-    char* linea = malloc(cfg_memoria->TAM_MEMORIA);
+    char* linea = string_repeat('\0', cfg_memoria->TAM_MEMORIA);
     bool encontrado = false;
     int32_t aux = tamanio_proceso;
     int32_t indices_marcos = 0;
@@ -67,7 +68,12 @@ void dessuspender_procesos (tablas_por_pid* contenido, int32_t tamanio_proceso, 
         else if (encontrado) {
             for (int i = 0; i < contenido->cant_marcos; i++) {
                 char* contenido_a_marco = malloc(cfg_memoria->TAM_PAGINA);
-                contenido_a_marco = string_substring(linea, i * cfg_memoria->TAM_PAGINA, (i + 1) * cfg_memoria->TAM_PAGINA);
+                if (!string_is_empty(linea) || linea != NULL) {
+                    contenido_a_marco = string_substring(linea, i * cfg_memoria->TAM_PAGINA, (i + 1) * cfg_memoria->TAM_PAGINA);
+                } 
+                else {
+                    contenido_a_marco = string_new();
+                }
                 actualizar_pagina_completa(contenido->marcos[i] * cfg_memoria->TAM_PAGINA, (void*)contenido_a_marco, contenido->pid, metricas_proceso);
                 free(contenido_a_marco);
                 contenido_a_marco = NULL;
@@ -75,7 +81,12 @@ void dessuspender_procesos (tablas_por_pid* contenido, int32_t tamanio_proceso, 
             encontrado = false;
         }
         else {
-            linea[string_length(linea) - 1] = '\n';
+            int length = string_length(linea);
+            log_debug(logger, "string_length linea: %d", length);
+            // if (length == 0) {
+            //     linea[length] = '\n';
+            // }
+            linea[length] = '\n';
             txt_write_in_file(swapfile_tmp, linea);
         }
     }

@@ -71,10 +71,11 @@ int32_t devolver_marco(tabla_paginas* tabla_actual, int32_t* indices, int32_t ni
 
 void* leer_pagina_completa(int32_t direccion_fisica, int32_t pid, t_metricas *metricas_proceso) {
     log_info(logger, "## PID: %d - Lectura - Dir. Física: %d - Tamaño: %d", pid, direccion_fisica, cfg_memoria->TAM_PAGINA);
-    void* retorno = malloc(cfg_memoria->TAM_PAGINA);
+    char* retorno = malloc(cfg_memoria->TAM_PAGINA + 1);
     sem_wait(&mutex_memoria);
     memcpy(retorno, memoria_principal->datos + direccion_fisica, cfg_memoria->TAM_PAGINA);
     sem_post(&mutex_memoria);
+    retorno[cfg_memoria->TAM_PAGINA] = '\0';
     metricas_proceso->cantidad_lecturas++;
     return retorno;
 }
