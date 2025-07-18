@@ -174,6 +174,7 @@ void handshake_kernel()
                 proceso = dictionary_get(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 suspender_proceso(tablas_proceso, proceso->lista_metricas);
+                tam_memoria_actual = tam_memoria_actual + proceso->tamanio;
                 break;
             }
             case DESSUSPENDER_PROCESO: {
@@ -182,6 +183,7 @@ void handshake_kernel()
                 proceso = dictionary_get(diccionario_procesos, pid_s);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 dessuspender_procesos(tablas_proceso, proceso->tamanio, proceso->lista_metricas);
+                tam_memoria_actual = tam_memoria_actual - proceso->tamanio;
                 break;
             }
             default:
@@ -392,7 +394,7 @@ bool verificar_espacio_memoria(int32_t tamanio)
              tamanio,
              tam_memoria_actual);
 
-    return tam_memoria_actual > tamanio;
+    return tam_memoria_actual >= tamanio;
 }
 
 

@@ -53,7 +53,6 @@ void asignar_marcos(tabla_paginas* tabla_actual, int32_t* tamanio_proceso, int32
             break;
         }
     }
-    metricas_proceso->subidas_a_mp++;
 }
 
 int32_t devolver_marco(tabla_paginas* tabla_actual, int32_t* indices, int32_t nivel, t_metricas *metricas_proceso) {

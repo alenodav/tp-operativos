@@ -9,7 +9,6 @@ int main(int argc, char* argv[]){
     char log_filename[64];
     sprintf(log_filename, "cpu-%s.log", id_cpu);
     
-    
     sem_init(&sem_handshake, 0, 0);
     interrupcion = false;
 
@@ -243,9 +242,11 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 
             t_paquete* paquete = crear_paquete(SYSCALL, buffer);
             enviar_paquete(paquete, fd_dispatch);
-            
 
             destruir_t_syscall(syscall);
+
+            t_paquete* respuesta = recibir_paquete(fd_dispatch);
+            destruir_paquete(respuesta);
             break;
         }
         case DUMP_MEMORY: {
@@ -296,7 +297,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             interrumpir_proceso(pid, pc);
         }
 
-    } while(instruccion_recibida->instruccion != EXIT && instruccion_recibida->instruccion != INIT_PROC && instruccion_recibida->instruccion != DUMP_MEMORY && instruccion_recibida->instruccion != IO_SYSCALL && !interrupcion);
+    } while(instruccion_recibida->instruccion != EXIT && instruccion_recibida->instruccion != DUMP_MEMORY && instruccion_recibida->instruccion != IO_SYSCALL && !interrupcion);
     
     interrupcion = false;
     free(instruccion_recibida->parametros);
@@ -345,13 +346,15 @@ void check_interrupt(int32_t pid) {
     if(paquete != NULL) {
         if (paquete->codigo_operacion == INTERRUPT) {
             int32_t pid_interrupcion = buffer_read_int32(paquete->buffer);
-            if(pid_interrupcion == pid) {
-                log_info(logger, "## Llega interrupción al puerto Interrupt");
-                interrupcion = true;
-            }
-            else {
-                log_debug(logger, "PID: %d - Interrupción descartada (para PID: %d)", pid, pid_interrupcion);
-            }
+            // if(pid_interrupcion == pid) {
+            //     log_info(logger, "## Llega interrupción al puerto Interrupt");
+            //     interrupcion = true;
+            // }
+            // else {
+            //     log_debug(logger, "PID: %d - Interrupción descartada (para PID: %d)", pid, pid_interrupcion);
+            // }
+            log_info(logger, "## Llega interrupción al puerto Interrupt");
+            interrupcion = true;
         } 
         else {
             log_debug(logger, "Codop incorrecto para interrupcion.");

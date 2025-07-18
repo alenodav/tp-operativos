@@ -34,7 +34,9 @@ typedef struct {
     t_estado estado_actual;
     int32_t tamanio_proceso;
     int32_t rafaga_estimada;
+    t_temporal* rafaga_actual;
     char* cpu_id;
+    char* nombre_archivo;
 } t_pcb;
 
 typedef struct {
@@ -146,6 +148,8 @@ t_list *io_list;
 t_list *io_queue_list;
 t_list *cpu_list;
 bool inicio_modulo;
+sem_t sem_archivos_instruccion;
+sem_t sem_espacio;
 sem_t sem_largo_plazo;
 sem_t mutex_cpus;
 sem_t mutex_io;
@@ -155,3 +159,4 @@ sem_t mutex_ready;
 sem_t mutex_blocked;
 sem_t mutex_susp_blocked;
 sem_t mutex_susp_ready;
+sem_t mutex_archivos;
