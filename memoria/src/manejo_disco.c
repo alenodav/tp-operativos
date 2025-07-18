@@ -29,8 +29,8 @@ void suspender_proceso(tablas_por_pid* contenido, t_metricas *metricas_proceso) 
         free(pagina_vacia);
         pagina_vacia = NULL;
     }
-    free(contenido->marcos);
-    contenido->marcos = NULL;
+    // free(contenido->marcos);
+    // contenido->marcos = NULL;
     FILE* swapfile = txt_open_for_append(cfg_memoria->PATH_SWAPFILE);
     char* pid = string_itoa(contenido->pid);
     string_append(&contenido_a_swap, "\n");
@@ -46,7 +46,7 @@ void suspender_proceso(tablas_por_pid* contenido, t_metricas *metricas_proceso) 
 }
 
 void dessuspender_procesos (tablas_por_pid* contenido, int32_t tamanio_proceso, t_metricas *metricas_proceso) {
-    char* swapfile_tmp_path = cfg_memoria->PATH_SWAPFILE;
+    char* swapfile_tmp_path = string_duplicate(cfg_memoria->PATH_SWAPFILE);
     string_append(&swapfile_tmp_path, ".tmp");
     FILE* swapfile_tmp = txt_open_for_append(swapfile_tmp_path);
     FILE* swapfile = fopen(cfg_memoria->PATH_SWAPFILE, "r");
@@ -86,7 +86,7 @@ void dessuspender_procesos (tablas_por_pid* contenido, int32_t tamanio_proceso, 
     remove(cfg_memoria->PATH_SWAPFILE);
     rename(swapfile_tmp_path, cfg_memoria->PATH_SWAPFILE);
 
-    free(linea);
+    //free(linea);
     free(pid_s);
     free(swapfile_tmp_path);
     metricas_proceso->subidas_a_mp++;
