@@ -237,13 +237,13 @@ int32_t correr_algoritmo_cache(int32_t pid) {
                 entrada_a_reemplazar = list_iterator_next(iterator_despues);
                 if(!entrada_a_reemplazar->uso && !entrada_a_reemplazar->modificado) {
                     encontrado = true;
-                    indice = list_iterator_index(iterator_despues) + (cant_entradas_cache - ptr_clock - 1);
+                    indice = list_iterator_index(iterator_despues) + ptr_clock;
                     break;
                 }
                 else if (i % 2 != 0){
                     if (!entrada_a_reemplazar->uso) {
                         encontrado = true;
-                        indice = list_iterator_index(iterator_despues) + (cant_entradas_cache - ptr_clock);
+                        indice = list_iterator_index(iterator_despues) + ptr_clock;
                         break;
                     }
                     else {
