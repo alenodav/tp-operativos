@@ -228,7 +228,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             t_syscall *syscall = malloc(sizeof(t_syscall));
             syscall->syscall = IO_SYSCALL;
             syscall->parametros = instruccion_recibida->parametros;
-            syscall->parametros_length = strlen(instruccion_recibida->parametros);
+            syscall->parametros_length = strlen(instruccion_recibida->parametros) + 1;
             syscall->pid = pid;
             syscall->pc = pc + 1;
             t_buffer* buffer = serializar_t_syscall(syscall);
@@ -244,7 +244,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             t_syscall *syscall = malloc(sizeof(t_syscall));
             syscall->syscall = INIT_PROC;
             syscall->parametros = instruccion_recibida->parametros;
-            syscall->parametros_length = strlen(instruccion_recibida->parametros);
+            syscall->parametros_length = strlen(instruccion_recibida->parametros) + 1;
             syscall->pid = pid;
             syscall->pc = pc + 1;
             t_buffer* buffer = serializar_t_syscall(syscall);
@@ -264,7 +264,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             t_syscall *syscall = malloc(sizeof(t_syscall));
             syscall->syscall = DUMP_MEMORY;
             syscall->parametros = instruccion_recibida->parametros;
-            syscall->parametros_length = strlen(instruccion_recibida->parametros);
+            syscall->parametros_length = strlen(instruccion_recibida->parametros) + 1;
             syscall->pid = pid;
             syscall->pc = pc + 1;
             t_buffer* buffer = serializar_t_syscall(syscall);
@@ -280,7 +280,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
             t_syscall *syscall = malloc(sizeof(t_syscall));
             syscall->syscall = EXIT;
             syscall->parametros = instruccion_recibida->parametros;
-            syscall->parametros_length = strlen(instruccion_recibida->parametros);
+            syscall->parametros_length = strlen(instruccion_recibida->parametros) + 1;
             syscall->pid = pid;
             syscall->pc = pc + 1;
             t_buffer* buffer = serializar_t_syscall(syscall);
