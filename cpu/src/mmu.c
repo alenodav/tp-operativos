@@ -208,7 +208,7 @@ int32_t correr_algoritmo_cache(int32_t pid) {
                 entrada_a_reemplazar = list_iterator_next(iterator_despues);
                 if(!entrada_a_reemplazar->uso) {
                     encontrado = true;
-                    indice = list_iterator_index(iterator_despues) + (cant_entradas_cache - ptr_clock);
+                    indice = list_iterator_index(iterator_despues) + ptr_clock;
                     break;
                 }
                 else {
@@ -237,13 +237,13 @@ int32_t correr_algoritmo_cache(int32_t pid) {
                 entrada_a_reemplazar = list_iterator_next(iterator_despues);
                 if(!entrada_a_reemplazar->uso && !entrada_a_reemplazar->modificado) {
                     encontrado = true;
-                    indice = list_iterator_index(iterator_despues) + (cant_entradas_cache - ptr_clock);
+                    indice = list_iterator_index(iterator_despues) + ptr_clock;
                     break;
                 }
                 else if (i % 2 != 0){
                     if (!entrada_a_reemplazar->uso) {
                         encontrado = true;
-                        indice = list_iterator_index(iterator_despues) + (cant_entradas_cache - ptr_clock);
+                        indice = list_iterator_index(iterator_despues) + ptr_clock;
                         break;
                     }
                     else {
@@ -294,13 +294,15 @@ void eliminar_entrada_cache(void *ptr) {
 
 void escribir_pagina_cache_a_memoria(entrada_cache* entrada, int32_t pid) {
     int32_t direccion_fisica = calcular_direccion_fisica(entrada->pagina * tamanio_pagina, pid);
-    t_buffer* buffer = buffer_create(sizeof(tamanio_pagina));
+    t_buffer* buffer = buffer_create(tamanio_pagina+sizeof(int32_t)*2);
     buffer_add_int32(buffer, pid);
     buffer_add_int32(buffer, direccion_fisica);
     buffer_add(buffer, entrada->contenido, tamanio_pagina);
     t_paquete* paquete = crear_paquete(ACTUALIZAR_PAGINA_COMPLETA, buffer);
     enviar_paquete(paquete, fd_memoria);
-    log_info(logger, "PID: %d - Memory Update - Página: %d - Frame: %d", pid, entrada->pagina, direccion_fisica/tamanio_pagina);
+    int32_t numero_marco = direccion_fisica/tamanio_pagina;
+    int32_t pagina = entrada->pagina;
+    log_info(logger, "PID: %d - Memory Update - Página: %d - Frame: %d", pid, pagina, numero_marco);
 }
 
 entrada_cache* entrada_cache_get_by_pagina(t_list* entrada_cache_list, int32_t pagina) {
