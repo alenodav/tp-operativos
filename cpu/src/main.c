@@ -13,6 +13,10 @@ int main(int argc, char* argv[]){
     interrupcion = false;
 
     config = crear_config("cpu");
+    
+    inicializar_tlb();
+    inicializar_cache();
+
     logger = crear_log(config, log_filename);
     log_debug(logger, "Logger de CPU id:%s creado.", id_cpu);
 
