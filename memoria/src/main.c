@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     //Leo el archivo de configuracion y la guardo en una variable global.
     leer_configuracion(config);
     memoria_principal = malloc(sizeof(t_memoria));
-    memoria_principal->datos = malloc(cfg_memoria->TAM_MEMORIA);
+    memoria_principal->datos = calloc(cfg_memoria->TAM_MEMORIA,1);
     inicializar_bitmap(cfg_memoria->TAM_MEMORIA / cfg_memoria->TAM_PAGINA);
 
     // Inicializo diccionario de procesos y su mutex
