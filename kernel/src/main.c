@@ -1219,18 +1219,11 @@ void planificar_srt_corto_plazo() {
 void* mayor_rafaga (void* un_pcb, void* otro_pcb) {
     t_pcb *un_pcb_cast = (t_pcb*) un_pcb;
     t_pcb *otro_pcb_cast = (t_pcb*) otro_pcb;
-   int32_t rafaga_un = un_pcb_cast->rafaga_estimada;
-    if (un_pcb_cast->fue_desalojado) {
-        rafaga_un = rafaga_un - temporal_gettime(un_pcb_cast->rafaga_actual);
-    }
-    int32_t rafaga_otro = otro_pcb_cast->rafaga_estimada;
-    if (otro_pcb_cast->fue_desalojado) {
-        rafaga_otro = rafaga_otro - temporal_gettime(otro_pcb_cast->rafaga_actual);
-    }
+   
     
     // un_pcb_cast->rafaga_estimada = estimar_sjf(un_pcb_cast);
     // otro_pcb_cast->rafaga_estimada = estimar_sjf(otro_pcb_cast);
-    return rafaga_un >= rafaga_otro ? un_pcb_cast : otro_pcb_cast;
+    return un_pcb_cast->rafaga_estimada >= otro_pcb_cast->rafaga_estimada ? un_pcb_cast : otro_pcb_cast;
 }
 
 void interrumpir_proceso(t_pcb* proceso, t_cpu* cpu) {
