@@ -6,6 +6,7 @@ char *memoria_usuario;
 pthread_mutex_t mutex_diccionario;
 sem_t cpu_handshake;
 sem_t kernel_handshake;
+sem_t diccionario_sem;
 t_config *config;
 t_list *lista_tablas_por_pid;
 int32_t tam_memoria_actual;
@@ -29,6 +30,7 @@ int main(int argc, char *argv[])
     sem_init(&cpu_handshake, 0, 0);
     sem_init(&kernel_handshake, 0, 0);
     sem_init(&mutex_memoria, 0, 1);
+    sem_init(&diccionario_sem, 0 ,1);
     log_debug(logger, "Diccionario de procesos creado correctamente.");
     lista_tablas_por_pid = list_create();
     tam_memoria_actual = cfg_memoria->TAM_MEMORIA;
@@ -52,6 +54,7 @@ int main(int argc, char *argv[])
     sem_destroy(&cpu_handshake);
     sem_destroy(&kernel_handshake);
     sem_destroy(&mutex_memoria);
+    sem_destroy(&diccionario_sem);
     liberar_conexion(fd_escucha_memoria);
     config_destroy(config);
     liberar_diccionario(diccionario_procesos);
@@ -114,7 +117,9 @@ void handshake_kernel()
                 //t_list* keys = dictionary_keys(diccionario_procesos);
                 pid_s = string_itoa(pid);
                 //pid = atoi(pid_s);
+                sem_wait(&diccionario_sem);
                 t_proceso* proceso_aux = dictionary_get(diccionario_procesos, pid_s);
+                sem_post(&diccionario_sem);
                 int32_t tam_proceso_aux = proceso_aux->tamanio;
                 
                 tablas_por_pid* tabla_proceso = crear_tabla_raiz(pid, tam_proceso_aux);
@@ -141,7 +146,9 @@ void handshake_kernel()
             case TERMINAR_PROCESO: {
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
+                sem_wait(&diccionario_sem);
                 proceso = dictionary_remove(diccionario_procesos, pid_s);
+                sem_post(&diccionario_sem);
                 tablas_proceso = tablas_por_pid_remove_by_pid(lista_tablas_por_pid, pid);
                 mostrar_metricas(proceso->lista_metricas);
 
@@ -160,7 +167,9 @@ void handshake_kernel()
             case DUMP_MEMORY_SYSCALL: {
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
+                sem_wait(&diccionario_sem);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
+                sem_post(&diccionario_sem);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 dump_memory(tablas_proceso, proceso->lista_metricas);
                 t_buffer* buffer_dump = buffer_create(sizeof(bool));
@@ -173,7 +182,9 @@ void handshake_kernel()
                 usleep(cfg_memoria->RETARDO_SWAP*1000);
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
+                sem_wait(&diccionario_sem);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
+                sem_post(&diccionario_sem);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 suspender_proceso(tablas_proceso, proceso->lista_metricas);
                 tam_memoria_actual = tam_memoria_actual + proceso->tamanio;
@@ -183,7 +194,9 @@ void handshake_kernel()
                 usleep(cfg_memoria->RETARDO_SWAP*1000);
                 pid = buffer_read_int32(paquete->buffer);
                 pid_s = string_itoa(pid);
+                sem_wait(&diccionario_sem);
                 proceso = dictionary_get(diccionario_procesos, pid_s);
+                sem_post(&diccionario_sem);
                 tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
                 dessuspender_procesos(tablas_proceso, proceso->tamanio, proceso->lista_metricas);
                 tam_memoria_actual = tam_memoria_actual - proceso->tamanio;
@@ -304,7 +317,9 @@ void handshake_cpu()
                 indices[i] = buffer_read_int32(paquete->buffer);
             }
             pid_s = string_itoa(pid);
+            sem_wait(&diccionario_sem);
             proceso = dictionary_get(diccionario_procesos, pid_s);
+            sem_post(&diccionario_sem);
             tablas_por_pid* tablas_proceso = tablas_por_pid_get_by_pid(lista_tablas_por_pid, pid);
             int32_t marco = devolver_marco(tablas_proceso->tabla_raiz, indices, 1, proceso->lista_metricas);
             t_buffer* buffer_marco = buffer_create(sizeof(int32_t));
@@ -318,7 +333,9 @@ void handshake_cpu()
             pid = buffer_read_int32(paquete->buffer);
             direccion = buffer_read_int32(paquete->buffer);
             pid_s = string_itoa(pid);
+            sem_wait(&diccionario_sem);
             proceso = dictionary_get(diccionario_procesos, pid_s);
+            sem_post(&diccionario_sem);
             void* contenido_pagina = leer_pagina_completa(direccion, pid, proceso->lista_metricas);
             t_buffer* buffer_leer = buffer_create(cfg_memoria->TAM_PAGINA);
             buffer_add(buffer_leer, contenido_pagina, cfg_memoria->TAM_PAGINA);
@@ -332,7 +349,9 @@ void handshake_cpu()
             void *contenido = malloc(cfg_memoria->TAM_PAGINA);
             buffer_read(paquete->buffer, contenido, cfg_memoria->TAM_PAGINA);
             pid_s = string_itoa(pid);
+            sem_wait(&diccionario_sem);
             proceso = dictionary_get(diccionario_procesos, pid_s);
+            sem_post(&diccionario_sem);
             actualizar_pagina_completa(direccion, contenido, pid, proceso->lista_metricas);
             break;
         }
@@ -514,7 +533,9 @@ void cargar_instrucciones(char *path_archivo, kernel_to_memoria* proceso_recibid
     inicializar_metricas(proceso->lista_metricas);
 
     char *pid_str = string_itoa(proceso_recibido->pid);
+    sem_wait(&diccionario_sem);
     dictionary_put(diccionario_procesos, pid_str, proceso);
+    sem_post(&diccionario_sem);
     free(pid_str);
 }
 
@@ -533,7 +554,9 @@ bool enviar_instruccion(int32_t fd_cpu, t_paquete* paquete){
     int32_t pc = buffer_read_int32(paquete->buffer);
 
     char *pid_str = string_itoa(pid);
+    sem_wait(&diccionario_sem);
     t_proceso* proceso = dictionary_get(diccionario_procesos, pid_str);
+    sem_post(&diccionario_sem);
     //t_list *lista_instruccion_to_cpu = dictionary_get(diccionario_procesos, pid_str);
     free(pid_str);
 
