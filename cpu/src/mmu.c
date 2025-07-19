@@ -88,7 +88,7 @@ int32_t consultar_marco_memoria(int32_t* indices, int32_t pid) {
     enviar_paquete(paquete, fd_memoria);
 
     t_paquete* respuesta = recibir_paquete(fd_memoria);
-    int32_t marco = buffer_read_int32(paquete->buffer);
+    int32_t marco = buffer_read_int32(respuesta->buffer);
     destruir_paquete(respuesta);
     return marco;
 }
@@ -162,7 +162,7 @@ void escribir_en_cache(int32_t direccion_logica, int32_t size, int32_t pid, void
 void agregar_a_cache(int32_t direccion_logica, int32_t pid) {
     int32_t direccion_fisica = consultar_marco(direccion_logica, pid) * tamanio_pagina;
 
-    t_buffer* buffer = buffer_create(sizeof(int32_t));
+    t_buffer* buffer = buffer_create(sizeof(int32_t) * 2);
     buffer_add_int32(buffer, pid);
     buffer_add_int32(buffer, direccion_fisica);
     t_paquete* paquete = crear_paquete(LEER_PAGINA_COMPLETA, buffer);
