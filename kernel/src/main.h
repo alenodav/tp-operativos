@@ -37,6 +37,7 @@ typedef struct {
     t_temporal* rafaga_actual;
     char* cpu_id;
     char* nombre_archivo;
+    bool fue_desalojado;
 } t_pcb;
 
 typedef struct {

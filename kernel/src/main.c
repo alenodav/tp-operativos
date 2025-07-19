@@ -306,7 +306,7 @@ t_pcb* crear_proceso() {
     pcb->tamanio_proceso = archivo->tamanio;
     pcb->nombre_archivo = string_duplicate(archivo->archivo); 
     pcb->metricas = list_create();
-    
+    pcb->fue_desalojado = false;
     agregar_metricas_estado(pcb);
     pasar_por_estado(pcb, NEW, NEW);
     pcb->estado_actual = NEW;
@@ -432,10 +432,6 @@ bool terminar_proceso_memoria (int32_t pid) {
 }
 
 void terminar_proceso(int32_t pid) {
-    bool consulta_memoria = terminar_proceso_memoria(pid);
-    if (!consulta_memoria) {
-        return;
-    }
     sem_wait(&mutex_execute);
     t_pcb *proceso = pcb_remove_by_pid(cola_exec, pid);
     if (!proceso) {
@@ -447,6 +443,12 @@ void terminar_proceso(int32_t pid) {
     t_cpu* cpu = cpu_find_by_id(proceso->cpu_id);
     cpu->estado = false;
     sem_post(&mutex_execute);
+    bool consulta_memoria = terminar_proceso_memoria(pid);
+    if (!consulta_memoria) {
+        return;
+    }
+    
+    
     sem_post(&sem_corto_plazo);
     t_estado_metricas *metricas_exec = list_get(proceso->metricas, proceso->estado_actual);
     temporal_stop(metricas_exec->MT);
@@ -699,6 +701,10 @@ void ejecutar_io_syscall (int32_t pid, char* id_io, int32_t tiempo) {
     io_enviar->pid = pid;
     io_enviar->tiempo_bloqueo = tiempo;
     t_io_queue *io_queue_buscada = io_queue_find_by_id(id_io);
+    if (!io_queue_buscada) {
+        terminar_proceso(pid);
+        return;
+    }
     sem_wait(&mutex_io);
     queue_push(io_queue_buscada->cola_procesos, io_enviar);
     sem_post(&mutex_io);
@@ -938,6 +944,7 @@ void atender_respuesta_cpu(t_cpu *cpu) {
         case IO_SYSCALL:
             cpu->estado = false;
             temporal_stop(pcb->rafaga_actual);  
+            pcb->rafaga_estimada = estimar_sjf(pcb);
             parametros = string_split(syscall_recibida->parametros, " ");
             char* dispositivo = string_duplicate(parametros[0]);
             int32_t tiempo = atoi(parametros[1]);
@@ -947,6 +954,7 @@ void atender_respuesta_cpu(t_cpu *cpu) {
             break;
         case DUMP_MEMORY:
             temporal_stop(pcb->rafaga_actual);  
+            pcb->rafaga_estimada = estimar_sjf(pcb);
             cpu->estado = false;
             ejecutar_dump_memory(syscall_recibida->pid);
             break; 
@@ -1029,7 +1037,7 @@ void ejecutar_dump_memory(int32_t pid) {
     sem_wait(&mutex_execute);
     t_pcb* proceso = pcb_remove_by_pid(cola_exec, pid);
     sem_post(&mutex_execute);
-    
+
     pasar_blocked(proceso, "DUMP_MEMORY");
 
     int32_t fd_conexion_memoria = crear_socket_cliente(config_get_string_value(config, "IP_MEMORIA"), config_get_string_value(config, "PUERTO_MEMORIA"));
@@ -1124,9 +1132,9 @@ int32_t estimar_sjf (t_pcb* pcb) {
     if (metrica_exec->ME < 1) {
         return est_inicial;
     }
-    if (pcb->estado_actual == EXEC) {
-        return pcb->rafaga_estimada;
-    }
+    // if (pcb->estado_actual == EXEC) {
+    //     return pcb->rafaga_estimada - temporal_gettime(pcb->rafaga_actual);
+    // }
     else {
         return alfa * temporal_gettime(pcb->rafaga_actual) + (1-alfa) * pcb->rafaga_estimada;
     }
@@ -1135,9 +1143,18 @@ int32_t estimar_sjf (t_pcb* pcb) {
 bool comparar_rafagas (void* un_pcb, void* otro_pcb) {
     t_pcb *un_pcb_cast = (t_pcb*) un_pcb;
     t_pcb *otro_pcb_cast = (t_pcb*) otro_pcb;
-    un_pcb_cast->rafaga_estimada = estimar_sjf(un_pcb_cast);
-    otro_pcb_cast->rafaga_estimada = estimar_sjf(otro_pcb_cast);
-    return un_pcb_cast->rafaga_estimada <= otro_pcb_cast->rafaga_estimada;
+    int32_t rafaga_un = un_pcb_cast->rafaga_estimada;
+    if (un_pcb_cast->fue_desalojado) {
+        rafaga_un = rafaga_un - temporal_gettime(un_pcb_cast->rafaga_actual);
+    }
+    int32_t rafaga_otro = otro_pcb_cast->rafaga_estimada;
+    if (otro_pcb_cast->fue_desalojado) {
+        rafaga_otro = rafaga_otro - temporal_gettime(otro_pcb_cast->rafaga_actual);
+    }
+
+    // un_pcb_cast->rafaga_estimada = estimar_sjf(un_pcb_cast);
+    // otro_pcb_cast->rafaga_estimada = estimar_sjf(otro_pcb_cast);
+    return rafaga_un <= rafaga_otro;
 }
 
 void planificar_srt_corto_plazo() {
@@ -1158,12 +1175,19 @@ void planificar_srt_corto_plazo() {
         log_debug(logger, "intenta ejecutar %d", proceso_a_ejecutar->pid);
         if (cpu_a_enviar == NULL){
             t_pcb *proceso_con_mayor_rafaga = list_get_maximum(cola_exec, mayor_rafaga);
-
-            proceso_a_ejecutar->rafaga_estimada = estimar_sjf(proceso_a_ejecutar);
+            
             log_debug(logger, "rafaga proceso_a_ejecutar %d", proceso_a_ejecutar->rafaga_estimada);
             log_debug(logger, "rafaga proceso_con_mayor_rafaga %d", proceso_con_mayor_rafaga->rafaga_estimada);
+            int32_t rafaga_restante = proceso_con_mayor_rafaga->rafaga_estimada - temporal_gettime(proceso_con_mayor_rafaga->rafaga_actual);
+            int32_t rafaga_estimada_nueva = 0;
+            if (proceso_a_ejecutar->fue_desalojado) {
+                rafaga_estimada_nueva = proceso_a_ejecutar->rafaga_estimada - temporal_gettime(proceso_a_ejecutar->rafaga_actual);
+            }
+            else {
+                rafaga_estimada_nueva = proceso_a_ejecutar->rafaga_estimada;
+            }
 
-            if (proceso_con_mayor_rafaga->rafaga_estimada > proceso_a_ejecutar->rafaga_estimada
+            if (rafaga_restante > rafaga_estimada_nueva
                 && proceso_con_mayor_rafaga->estado_actual == EXEC) {
                 log_debug(logger, "entro a interrupcion %d", proceso_a_ejecutar->pid);
                 cpu_a_enviar = cpu_find_by_id(proceso_con_mayor_rafaga->cpu_id);
@@ -1177,8 +1201,10 @@ void planificar_srt_corto_plazo() {
         }
         
         list_remove_element(cola_ready, proceso_a_ejecutar);
-        proceso_a_ejecutar->rafaga_estimada = estimar_sjf(proceso_a_ejecutar);
+        //proceso_a_ejecutar->rafaga_estimada = estimar_sjf(proceso_a_ejecutar);
+        proceso_a_ejecutar->rafaga_actual = temporal_create();
         pasar_exec(proceso_a_ejecutar);
+        proceso_a_ejecutar->fue_desalojado = false;
 
         enviar_kernel_to_cpu(cpu_a_enviar->socket_dispatch, proceso_a_ejecutar);
         cpu_a_enviar->estado = true;
@@ -1193,8 +1219,8 @@ void planificar_srt_corto_plazo() {
 void* mayor_rafaga (void* un_pcb, void* otro_pcb) {
     t_pcb *un_pcb_cast = (t_pcb*) un_pcb;
     t_pcb *otro_pcb_cast = (t_pcb*) otro_pcb;
-    un_pcb_cast->rafaga_estimada = estimar_sjf(un_pcb_cast);
-    otro_pcb_cast->rafaga_estimada = estimar_sjf(otro_pcb_cast);
+    // un_pcb_cast->rafaga_estimada = estimar_sjf(un_pcb_cast);
+    // otro_pcb_cast->rafaga_estimada = estimar_sjf(otro_pcb_cast);
     return un_pcb_cast->rafaga_estimada >= otro_pcb_cast->rafaga_estimada ? un_pcb_cast : otro_pcb_cast;
 }
 
@@ -1210,6 +1236,13 @@ void interrumpir_proceso(t_pcb* proceso, t_cpu* cpu) {
     t_paquete *respuesta = recibir_paquete(cpu->socket_interrupt);
     kernel_to_cpu *proceso_cpu = deserializar_kernel_to_cpu(respuesta->buffer);
     proceso->pc = proceso_cpu->pc;
+    sem_wait(&mutex_execute);
+    list_remove_element(cola_exec, proceso);
+    sem_post(&mutex_execute);
+    temporal_stop(proceso->rafaga_actual);
+
+    //proceso->rafaga_estimada = proceso->rafaga_estimada - temporal_gettime(proceso->rafaga_actual);
+    proceso->fue_desalojado = true;
     pasar_ready(proceso, list_get(proceso->metricas, EXEC));
     log_info(logger, "## (%d) - Desalojado por algoritmo SJF/SRT", proceso->pid);
 
