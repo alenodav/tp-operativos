@@ -197,6 +197,7 @@ void solicitar_instruccion(kernel_to_cpu* instruccion){
 
             int32_t direccion_fisica = calcular_direccion_fisica(leer->direccion, pid);
             leer->direccion = direccion_fisica;
+            leer->pid = pid;
             log_debug(logger, "PID: %d - EXECUTE - READ - Dirección: %d, Tamaño: %d", pid, leer->direccion, leer->tamanio);            
             
             t_buffer* buffer = serializar_cpu_read(leer);
@@ -323,9 +324,10 @@ t_buffer *serializar_cpu_write(cpu_write *data) {
 }
 
 t_buffer *serializar_cpu_read(cpu_read *data) {
-    t_buffer *buffer = buffer_create(sizeof(int32_t) * 2);
+    t_buffer *buffer = buffer_create(sizeof(int32_t) * 3);
     buffer_add_int32(buffer, data->direccion);
     buffer_add_int32(buffer, data->tamanio);
+    buffer_add_int32(buffer, data->pid);
     return buffer;
 }
 

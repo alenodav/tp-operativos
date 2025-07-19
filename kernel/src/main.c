@@ -750,13 +750,15 @@ void manejar_respuesta_io(t_io *io_espera) {
         terminar_proceso(io_espera->proceso_ejecucion);
         sem_wait(&mutex_io);
         t_io_queue *cola_io_finalizar = io_queue_find_by_id(io_espera->identificador);
-        if (!queue_is_empty(cola_io_finalizar->cola_procesos)) {
-            t_pcb* proceso = queue_pop(cola_io_finalizar->cola_procesos);
-            terminar_proceso(proceso->pid);
+        if (cola_io_finalizar) {
+            if (!queue_is_empty(cola_io_finalizar->cola_procesos)) {
+                t_pcb* proceso = queue_pop(cola_io_finalizar->cola_procesos);
+                terminar_proceso(proceso->pid);
+            }
+            list_remove_element(io_queue_list, cola_io_finalizar);
+            queue_destroy(cola_io_finalizar->cola_procesos);
+            free(cola_io_finalizar);
         }
-        list_remove_element(io_queue_list, cola_io_finalizar);
-        queue_destroy(cola_io_finalizar->cola_procesos);
-        free(cola_io_finalizar);
         sem_post(&mutex_io);
         sem_wait(&mutex_io);
         list_remove_element(io_list, io_espera);
@@ -773,8 +775,10 @@ void manejar_respuesta_io(t_io *io_espera) {
     io_espera->estado = false;
     io_espera->proceso_ejecucion = -1;
     t_io_queue *cola_io = io_queue_find_by_id(io_espera->identificador);
-    if (!queue_is_empty(cola_io->cola_procesos)) {
-        enviar_kernel_to_io(io_espera->identificador);
+    if (cola_io) {
+        if (!queue_is_empty(cola_io->cola_procesos)) {
+            enviar_kernel_to_io(io_espera->identificador);
+        }
     }
     return;
 }

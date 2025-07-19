@@ -291,9 +291,9 @@ void handshake_cpu()
         case READ_MEMORIA:{
             cpu_read *parametros = deserializar_cpu_read(paquete->buffer);
             char* retorno = (char*)leer_de_memoria(parametros->direccion, parametros->tamanio, parametros->pid);
-            t_buffer *buffer_resp = buffer_create(sizeof(int32_t) + parametros->tamanio + 1);
-            buffer_add_int32(buffer_resp, parametros->tamanio + 1);
-            buffer_add_string(buffer_resp, parametros->tamanio + 1, retorno);
+            t_buffer *buffer_resp = buffer_create(sizeof(int32_t) + parametros->tamanio);
+            buffer_add_int32(buffer_resp, parametros->tamanio);
+            buffer_add_string(buffer_resp, parametros->tamanio, retorno);
             t_paquete *paquete_read = crear_paquete(READ_MEMORIA, buffer_resp);
             enviar_paquete(paquete_read, cliente);
             break;
@@ -635,6 +635,7 @@ cpu_read *deserializar_cpu_read(t_buffer *data) {
     cpu_read *ret = malloc(sizeof(cpu_read));
     ret->direccion = buffer_read_int32(data);
     ret->tamanio = buffer_read_int32(data);
+    ret->pid = buffer_read_int32(data);
     return ret;
 }
 
