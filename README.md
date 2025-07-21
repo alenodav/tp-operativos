@@ -1,22 +1,21 @@
 # TP SisOp - 1C - 2025
 
-University group assignment where we developed a simulation of an operating system. This assignment was made by [Tomas Peña](https://github.com/tomasp0603) [David Gómez](https://github.com/alenodav) and [Pedro Baccaro](https://github.com/pedro-baccaro).
+University group assignment where we developed a simulation of an operating system. This assignment was created by [Tomas Peña](https://github.com/tomasp0603), [David Gómez](https://github.com/alenodav), and [Pedro Baccaro](https://github.com/pedro-baccaro).
 
-Also, special mention to [David Lozada](https://www.linkedin.com/in/davidlozadaezequiel/) who helped us in the first couple weeks with the CPU module. Due to personal issues, he decided to make a step out of the project.
+A special mention to [David Lozada](https://www.linkedin.com/in/davidlozadaezequiel/) who helped us during the first couple of weeks with the CPU module. Due to personal issues, he decided to step out of the project.
 
-## Project specification 
+## Project Specification
 
-[Assignment specification](https://docs.google.com/document/d/1HC9Zi-kpn8jI_egJGEZe77wUCbSkwSw9Ygqqs7m_-is/edit?tab=t.0#heading=h.45hwzxoodksd>)  
+[Assignment specification](https://docs.google.com/document/d/1HC9Zi-kpn8jI_egJGEZe77wUCbSkwSw9Ygqqs7m_-is/edit?tab=t.0#heading=h.45hwzxoodksd)
 
-In the image you would see how the modules interact.
+The following image shows how the modules interact:
 
 - **Kernel**: Coordinates process scheduling and communication between modules.
 - **Memoria**: Simulates memory management using multi-level paging and frame allocation.
 - **CPU**: Executes instructions, manages process execution cycles, and interacts with the Kernel for context switching.
 - **IO**: Handles input/output operations asynchronously using simulated devices.
 
-- <img width="606" height="376" alt="image" src="https://github.com/user-attachments/assets/022f4814-148f-41f1-8d51-cdb3f1c35988" />
-
+![Module Interaction](https://github.com/user-attachments/assets/022f4814-148f-41f1-8d51-cdb3f1c35988)
 
 ## ⚙️ Technologies & Tools
 
@@ -24,5 +23,5 @@ In the image you would see how the modules interact.
 - Programming Language: **C**
 - Inter-process communication: **Sockets**
 - Concurrency: **Threads**
-- Project management: **Makefiles**, `valgrind`.
+- Project management: **Makefiles**, `valgrind`
 [so-deploy]: https://github.com/sisoputnfrba/so-deploy
